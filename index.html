@@ -99,16 +99,23 @@ async function medirVelocidade(){
   }
 }
 
-// ===== BATERIA =====
+// ===== BATERIA (SEPARADA) =====
 async function medirBateria(){
   try{
     const bat = await navigator.getBattery()
     const pct = Math.round(bat.level * 10)
     const nivel = pct < 2 ? "BL" : "B" + pct
     const carregando = bat.charging ? "C1" : "C0"
-    return nivel + carregando
+
+    return {
+      bateria: nivel,
+      carregando: carregando
+    }
   } catch {
-    return ""
+    return {
+      bateria: "",
+      carregando: ""
+    }
   }
 }
 
@@ -192,7 +199,7 @@ const conexao = (() => {
 })()
 
 // ===== EXEC =====
-const [velTag, bat, movimento, redeTag] = await Promise.all([
+const [velTag, batObj, movimento, redeTag] = await Promise.all([
   medirVelocidade(),
   medirBateria(),
   medirMovimento(),
@@ -204,7 +211,8 @@ const ram = medirRAM()
 // ===== EVENTOS =====
 enviarEventoDireto(tempoTag)
 enviarEventoDireto(velTag)
-enviarEventoDireto(bat)
+enviarEventoDireto(batObj.bateria)
+enviarEventoDireto(batObj.carregando)
 enviarEventoDireto(tema)
 enviarEventoDireto(ram)
 enviarEventoDireto(vib)
@@ -212,7 +220,6 @@ enviarEventoDireto(device)
 enviarEventoDireto(conexao)
 enviarEventoDireto(movimento)
 enviarEventoDireto(redeTag)
-enviarEventoDireto("ID" + userId)
 
 // ===== UC FINAL =====
 let baseUC = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)
@@ -221,7 +228,8 @@ let finalUC = (
   baseUC +
   tempoTag +
   velTag +
-  bat +
+  batObj.bateria +
+  batObj.carregando +
   tema +
   ram +
   vib +
@@ -232,7 +240,7 @@ let finalUC = (
   "ID" + userId
 ).replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)
 
-// ===== REDIRECT SEM DELAY =====
+// ===== REDIRECT =====
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
 
 window.location.href = url
