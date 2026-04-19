@@ -75,33 +75,14 @@ if(!LINK || !UC){
   throw new Error("Parâmetros inválidos")
 }
 
-// ===== RESUMO ORIGEM =====
-function resumirOrigem(texto){
-  let plataforma = "U"
-  let posicao = "U"
-
-  if(texto.includes("ig")) plataforma = "I"
-  else if(texto.includes("fb")) plataforma = "F"
-
-  if(texto.includes("stories")) posicao = "S"
-  else if(texto.includes("reels")) posicao = "R"
-  else if(texto.includes("feed")) posicao = "F"
-
-  return plataforma + posicao
-}
-
-// ===== LIMPAR + RESUMIR UC =====
+// ===== LIMPAR UC (mantém origem original, mas sem caracteres inválidos) =====
 let baseUC = UC.toLowerCase()
-let origemResumo = resumirOrigem(baseUC)
 
-// remove texto grande
-baseUC = baseUC.replace(/instagram|facebook|stories|reels|feed|ig|fb/gi, "")
+// remove caracteres proibidos para shortlink
+baseUC = baseUC.replace(/[^a-zA-Z0-9]/g, "")
 
-// limpa
-baseUC = baseUC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)
-
-// adiciona resumo
-baseUC = baseUC + origemResumo
+// limita tamanho base
+baseUC = baseUC.slice(0, 30)
 
 // ===== TEMPO =====
 const tempoTag = "T1"
@@ -132,7 +113,6 @@ async function medirBateria(){
     const pct = Math.round(bat.level * 10)
     const nivel = pct < 2 ? "BL" : "B" + pct
     const carregando = bat.charging ? "C1" : "C0"
-
     return { bateria: nivel, carregando: carregando }
   } catch {
     return { bateria: "", carregando: "" }
@@ -179,21 +159,11 @@ function medirWebRTC(){
 
       pc.onicecandidate = e => {
         if(!e || !e.candidate){
-          analisar()
+          resolve("RU")
           return
         }
         const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/)
         if(m) ips.add(m[1])
-      }
-
-      function analisar(){
-        let tag = "RU"
-        for(const ip of ips){
-          if(/^10\./.test(ip)) return resolve("RC")
-          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return resolve("RV")
-          if(/^192\.168\./.test(ip)) tag = "RH"
-        }
-        resolve(tag)
       }
 
       pc.createDataChannel('')
