@@ -24,7 +24,7 @@ function gerarId(){
 
 function getUserId(){
   let id = localStorage.getItem('user_id')
-  if(!id || id.length !== 8){   // valida tamanho — regenera se veio de outro sistema
+  if(!id || id.length !== 8){
     id = gerarId()
     localStorage.setItem('user_id', id)
   }
@@ -36,7 +36,6 @@ const userId = getUserId()
 fbq('init', '799819532599997', { external_id: userId })
 fbq('track', 'PageView', { external_id: userId })
 
-// ===== EVENTOS =====
 function enviarEvento(valor){
   if(!valor) return
   const nome = valor.replace(/[^a-zA-Z0-9]/g, "")
@@ -49,13 +48,20 @@ function enviarEvento(valor){
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 </head>
-
 <body>
-
 <script>
 (async function(){
 
-// ===== TIMEOUT HELPER =====
+// =========================================================
+// DEBUG MODE
+// true  = mostra alert com todos os valores brutos
+// false = producao silenciosa
+// =========================================================
+const DEBUG = false
+
+// =========================================================
+// TIMEOUT HELPER
+// =========================================================
 function timeout(promise, ms, fallback){
   return Promise.race([
     promise,
@@ -63,12 +69,13 @@ function timeout(promise, ms, fallback){
   ])
 }
 
-// ===== PARAMS =====
+// =========================================================
+// PARAMS
+// =========================================================
 const params = new URLSearchParams(window.location.search)
 let LINK = null, UC = null
 
 const raw = params.get("dest")
-
 if(raw && raw.includes("|||")){
   const p = raw.split("|||")
   LINK = p[0]
@@ -79,37 +86,66 @@ if(raw && raw.includes("|||")){
 }
 
 if(!LINK || !UC){
-  throw new Error("Parâmetros inválidos")
+  throw new Error("Parametros invalidos")
 }
 
-// ===== PLACEMENT — de onde veio o clique =====
-// Configure na URL do anúncio: &pl={{placement}}&src={{site_source_name}}
+// =========================================================
+// PLACEMENT
+// Captura o valor BRUTO antes de qualquer encode
+// O Meta pode mandar com espaco ("instagram reels")
+// ou com underscore ("instagram_reels") — tratamos os dois
+// Tambem trata o caso do parametro nao ser substituido
+// e chegar como texto literal "{{placement}}"
+// =========================================================
+const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
+const srcRaw = (params.get("src") || "").toLowerCase().trim()
+
 function classPlacement(p){
-  if(!p) return "PU"
-  if(p.includes("reels"))   return "PR"  // Reels
-  if(p.includes("stories")) return "PS"  // Stories
-  if(p.includes("explore")) return "PE"  // Explore
-  if(p.includes("feed"))    return "PF"  // Feed
-  return "PO"                            // Outro
+  // se chegou como literal nao substituido — ignora
+  if(!p || p.includes("{{")) return "PU"
+  // normaliza: remove underscores e espacos para comparar
+  const n = p.replace(/[_\s-]/g, "")
+  if(n.includes("profilereels"))  return "PP"  // instagram profile reels
+  if(n.includes("reelsoverlay"))  return "PV"  // overlay em cima de reels
+  if(n.includes("reels"))         return "PR"  // reels (ig ou fb)
+  if(n.includes("stories"))       return "PS"  // stories (ig, fb ou msg)
+  if(n.includes("explorehome"))   return "PH"  // explore home (grid)
+  if(n.includes("explore"))       return "PE"  // explore
+  if(n.includes("search"))        return "PQ"  // busca
+  if(n.includes("marketplace"))   return "PM"  // marketplace
+  if(n.includes("instream"))      return "PI"  // in-stream video
+  if(n.includes("video"))         return "PI"  // video feeds
+  if(n.includes("messenger"))     return "PG"  // messenger
+  if(n.includes("audience"))      return "PA"  // audience network
+  if(n.includes("feed"))          return "PF"  // feed (qualquer)
+  return "PO"                                  // outro nao mapeado
 }
 
 function classSrc(s){
-  if(!s) return "SU"
-  if(s === "ig") return "SI"  // Instagram
-  if(s === "fb") return "SF"  // Facebook
-  return "SU"                 // Desconhecido / orgânico
+  if(!s || s.includes("{{")) return "SU"
+  if(s === "ig")  return "SI"  // Instagram
+  if(s === "fb")  return "SF"  // Facebook
+  if(s === "msg") return "SM"  // Messenger
+  if(s === "an")  return "SA"  // Audience Network
+  return "SU"
 }
 
-const placementTag = classPlacement(params.get("pl"))
-const sourceTag    = classSrc(params.get("src"))
+const placementTag = classPlacement(plRaw)
+const sourceTag    = classSrc(srcRaw)
 
-// ===== BASE UC =====
-let baseUC = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)
+// =========================================================
+// BASE UC
+// =========================================================
+const baseUC = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
 
-// ===== TEMPO =====
+// =========================================================
+// TEMPO
+// =========================================================
 const tempoTag = "T1"
 
-// ===== VELOCIDADE =====
+// =========================================================
+// VELOCIDADE
+// =========================================================
 function classificarVel(mbps){
   if(mbps <= 0.5) return 1
   if(mbps <= 1)   return 3
@@ -123,25 +159,25 @@ async function medirVelocidade(){
   try {
     const downlink = navigator.connection?.downlink || 5
     return "N" + classificarVel(downlink)
-  } catch {
-    return "N6"
-  }
+  } catch { return "N6" }
 }
 
-// ===== BATERIA =====
+// =========================================================
+// BATERIA
+// =========================================================
 async function medirBateria(){
   try {
-    const bat      = await navigator.getBattery()
-    const pct      = Math.round(bat.level * 10)
-    const nivel    = pct < 2 ? "BL" : "B" + pct
+    const bat = await navigator.getBattery()
+    const pct = Math.round(bat.level * 10)
+    const nivel = pct < 2 ? "BL" : "B" + pct
     const carregando = bat.charging ? "C1" : "C0"
     return { bateria: nivel, carregando }
-  } catch {
-    return { bateria: "", carregando: "" }
-  }
+  } catch { return { bateria: "", carregando: "" } }
 }
 
-// ===== MOVIMENTO =====
+// =========================================================
+// MOVIMENTO
+// =========================================================
 function medirMovimento(){
   return new Promise(resolve => {
     let detectado = false
@@ -163,7 +199,9 @@ function medirMovimento(){
   })
 }
 
-// ===== RAM =====
+// =========================================================
+// RAM
+// =========================================================
 function medirRAM(){
   const ram = navigator.deviceMemory || 4
   if(ram <= 2) return "R1"
@@ -172,11 +210,13 @@ function medirRAM(){
   return "R4"
 }
 
-// ===== WEBRTC — tipo de rede =====
-// RH = doméstico (192.168.x.x)
-// RC = corporativo (10.x.x.x)
-// RV = VPN provável (172.16–31.x.x)
-// RU = não detectado
+// =========================================================
+// WEBRTC
+// RH = domestico   (192.168.x.x)
+// RC = corporativo  (10.x.x.x)
+// RV = VPN provavel (172.16-31.x.x)
+// RU = nao detectado
+// =========================================================
 function medirWebRTC(){
   return new Promise(resolve => {
     try {
@@ -188,12 +228,11 @@ function medirWebRTC(){
         if(encerrado) return
         encerrado = true
         try { pc.close() } catch {}
-
         let tag = "RU"
         for(const ip of [...ips]){
-          if(/^10\./.test(ip))                                { tag = "RC"; break }
-          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))          { tag = "RV"; break }
-          if(/^192\.168\./.test(ip))                            tag = "RH"
+          if(/^10\./.test(ip))                               { tag = "RC"; break }
+          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))         { tag = "RV"; break }
+          if(/^192\.168\./.test(ip))                           tag = "RH"
         }
         resolve(tag)
       }
@@ -209,53 +248,91 @@ function medirWebRTC(){
         .then(o => pc.setLocalDescription(o))
         .catch(() => resolve("RU"))
 
-    } catch {
-      resolve("RU")
-    }
+      setTimeout(() => encerrar(), 850)
+
+    } catch { resolve("RU") }
   })
 }
 
-// ===== OUTROS (síncronos) =====
-const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
-const ua     = navigator.userAgent || ""
-const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-const vib    = navigator.vibrate ? "V1" : "V0"
+// =========================================================
+// OUTROS SINCRONOS
+// =========================================================
+const tema    = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
+const ua      = navigator.userAgent || ""
+const device  = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
+const vib     = navigator.vibrate ? "V1" : "V0"
 const conexao = (() => {
   const c = navigator.connection
-  if(!c)                  return "U"
-  if(c.type === "wifi")   return "W"
+  if(!c)                    return "U"
+  if(c.type === "wifi")     return "W"
   if(c.type === "cellular") return "M"
   return "U"
 })()
 
-// ===== EXEC — tudo em paralelo =====
+// =========================================================
+// EXECUCAO PARALELA
+// =========================================================
 const [velTag, batObj, movimento, redeTag] = await Promise.all([
-  timeout(medirVelocidade(), 150,  "N6"),
-  timeout(medirBateria(),    150,  { bateria: "", carregando: "" }),
-  timeout(medirMovimento(),  150,  "M0"),
-  timeout(medirWebRTC(),     800,  "RU")   // WebRTC precisa de mais tempo
+  timeout(medirVelocidade(), 200, "N6"),
+  timeout(medirBateria(),    200, { bateria: "", carregando: "" }),
+  timeout(medirMovimento(),  200, "M0"),
+  timeout(medirWebRTC(),     950, "RU")
 ])
 
 const ram = medirRAM()
 
-// ===== DISPARAR EVENTOS META =====
-enviarEvento(tempoTag)
-enviarEvento(velTag)
-enviarEvento(batObj.bateria)
-enviarEvento(batObj.carregando)
-enviarEvento(tema)
-enviarEvento(ram)
-enviarEvento(vib)
-enviarEvento(device)
-enviarEvento(conexao)
-enviarEvento(movimento)
-enviarEvento(redeTag)
-enviarEvento(placementTag)
-enviarEvento(sourceTag)
+// =========================================================
+// DEBUG — ative DEBUG = true no topo para usar
+// =========================================================
+if(DEBUG){
+  alert(
+    "=== DEBUG UC ===\n" +
+    "pl bruto:     [" + plRaw         + "]\n" +
+    "src bruto:    [" + srcRaw        + "]\n" +
+    "placementTag: [" + placementTag  + "]\n" +
+    "sourceTag:    [" + sourceTag     + "]\n" +
+    "redeTag:      [" + redeTag       + "]\n" +
+    "velTag:       [" + velTag        + "]\n" +
+    "bateria:      [" + batObj.bateria + batObj.carregando + "]\n" +
+    "device:       [" + device        + "]\n" +
+    "conexao:      [" + conexao       + "]\n" +
+    "movimento:    [" + movimento     + "]\n" +
+    "userId:       [" + userId        + "]"
+  )
+}
 
-// ===== UC FINAL =====
-// Ordem: base + T + N + B + C + tema + R + V + device + conexao + M + rede + placement + source + ID
-let finalUC = (
+// =========================================================
+// EVENTOS META
+// =========================================================
+;[
+  tempoTag,
+  velTag,
+  batObj.bateria,
+  batObj.carregando,
+  tema,
+  ram,
+  vib,
+  device,
+  conexao,
+  movimento,
+  redeTag,
+  placementTag,
+  sourceTag
+].forEach(enviarEvento)
+
+// =========================================================
+// MONTAGEM DO UC FINAL
+//
+// Limite: 48 chars
+// O ID (10 chars fixos) e SEMPRE protegido no final
+// O corpo ocupa os primeiros 38 chars
+//
+// ORDEM:
+// [base16] T N bat C tema R V device conexao M rede placement source ID
+// =========================================================
+const idTag = "ID" + userId  // sempre 10 chars
+
+const corpo = (
   baseUC            +
   tempoTag          +
   velTag            +
@@ -269,17 +346,22 @@ let finalUC = (
   movimento         +
   redeTag           +
   placementTag      +
-  sourceTag         +
-  "ID" + userId
-).replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)
+  sourceTag
+).replace(/[^a-zA-Z0-9]/g, "")
 
-// ===== REDIRECT =====
+const MAX          = 48
+const espacoCorpo  = MAX - idTag.length   // 38 chars para o corpo
+const corpoFinal   = corpo.slice(0, espacoCorpo)
+const finalUC      = corpoFinal + idTag   // ID sempre completo no final
+
+// =========================================================
+// REDIRECT
+// =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
 
 window.location.href = url
 
 })();
 </script>
-
 </body>
 </html>
