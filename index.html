@@ -36,14 +36,12 @@ const userId = getUserId()
 fbq('init','799819532599997',{external_id:userId})
 fbq('track','PageView',{external_id:userId})
 
-// ===== EVENTO =====
-function enviarEventoDireto(valor){
+// ===== EVENTOS =====
+function enviarEvento(valor){
   if(!valor) return
-  const nomeLimpo = valor.replace(/[^a-zA-Z0-9]/g, "")
+  const nome = valor.replace(/[^a-zA-Z0-9]/g, "")
   try{
-    fbq('trackCustom', nomeLimpo, {
-      external_id: userId
-    })
+    fbq('trackCustom', nome, { external_id: userId })
   }catch{}
 }
 </script>
@@ -77,6 +75,34 @@ if(!LINK || !UC){
   throw new Error("Parâmetros inválidos")
 }
 
+// ===== RESUMO ORIGEM =====
+function resumirOrigem(texto){
+  let plataforma = "U"
+  let posicao = "U"
+
+  if(texto.includes("ig")) plataforma = "I"
+  else if(texto.includes("fb")) plataforma = "F"
+
+  if(texto.includes("stories")) posicao = "S"
+  else if(texto.includes("reels")) posicao = "R"
+  else if(texto.includes("feed")) posicao = "F"
+
+  return plataforma + posicao
+}
+
+// ===== LIMPAR + RESUMIR UC =====
+let baseUC = UC.toLowerCase()
+let origemResumo = resumirOrigem(baseUC)
+
+// remove texto grande
+baseUC = baseUC.replace(/instagram|facebook|stories|reels|feed|ig|fb/gi, "")
+
+// limpa
+baseUC = baseUC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)
+
+// adiciona resumo
+baseUC = baseUC + origemResumo
+
 // ===== TEMPO =====
 const tempoTag = "T1"
 
@@ -99,7 +125,7 @@ async function medirVelocidade(){
   }
 }
 
-// ===== BATERIA (SEPARADA) =====
+// ===== BATERIA =====
 async function medirBateria(){
   try{
     const bat = await navigator.getBattery()
@@ -107,15 +133,9 @@ async function medirBateria(){
     const nivel = pct < 2 ? "BL" : "B" + pct
     const carregando = bat.charging ? "C1" : "C0"
 
-    return {
-      bateria: nivel,
-      carregando: carregando
-    }
+    return { bateria: nivel, carregando: carregando }
   } catch {
-    return {
-      bateria: "",
-      carregando: ""
-    }
+    return { bateria: "", carregando: "" }
   }
 }
 
@@ -209,21 +229,19 @@ const [velTag, batObj, movimento, redeTag] = await Promise.all([
 const ram = medirRAM()
 
 // ===== EVENTOS =====
-enviarEventoDireto(tempoTag)
-enviarEventoDireto(velTag)
-enviarEventoDireto(batObj.bateria)
-enviarEventoDireto(batObj.carregando)
-enviarEventoDireto(tema)
-enviarEventoDireto(ram)
-enviarEventoDireto(vib)
-enviarEventoDireto(device)
-enviarEventoDireto(conexao)
-enviarEventoDireto(movimento)
-enviarEventoDireto(redeTag)
+enviarEvento(tempoTag)
+enviarEvento(velTag)
+enviarEvento(batObj.bateria)
+enviarEvento(batObj.carregando)
+enviarEvento(tema)
+enviarEvento(ram)
+enviarEvento(vib)
+enviarEvento(device)
+enviarEvento(conexao)
+enviarEvento(movimento)
+enviarEvento(redeTag)
 
 // ===== UC FINAL =====
-let baseUC = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)
-
 let finalUC = (
   baseUC +
   tempoTag +
