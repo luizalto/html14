@@ -274,7 +274,7 @@ const conexao = (() => {
 // =========================================================
 const [velTag, batObj, movimento, redeTag] = await Promise.all([
   timeout(medirVelocidade(), 200, "N6"),
-  timeout(medirBateria(),    200, { bateria: "", carregando: "" }),
+  timeout(medirBateria(),    800, { bateria: "", carregando: "" }),
   timeout(medirMovimento(),  200, "M0"),
   timeout(medirWebRTC(),     950, "RU")
 ])
