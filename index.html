@@ -54,10 +54,13 @@ function enviarEvento(valor){
 
 // =========================================================
 // DEBUG MODE
-// true  = mostra alert com todos os valores brutos
-// false = producao silenciosa
 // =========================================================
 const DEBUG = false
+
+// =========================================================
+// GOOGLE SHEETS — URL do Apps Script
+// =========================================================
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbyRp-cEQuFJpENz2zise9vxSZ8-xcF7mn4PmZvJ4_cohJYJODSZvTOLqQv9f2WOWOf6/exec"
 
 // =========================================================
 // TIMEOUT HELPER
@@ -91,42 +94,35 @@ if(!LINK || !UC){
 
 // =========================================================
 // PLACEMENT
-// Captura o valor BRUTO antes de qualquer encode
-// O Meta pode mandar com espaco ("instagram reels")
-// ou com underscore ("instagram_reels") — tratamos os dois
-// Tambem trata o caso do parametro nao ser substituido
-// e chegar como texto literal "{{placement}}"
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
 
 function classPlacement(p){
-  // se chegou como literal nao substituido — ignora
   if(!p || p.includes("{{")) return "PU"
-  // normaliza: remove underscores e espacos para comparar
   const n = p.replace(/[_\s-]/g, "")
-  if(n.includes("profilereels"))  return "PP"  // instagram profile reels
-  if(n.includes("reelsoverlay"))  return "PV"  // overlay em cima de reels
-  if(n.includes("reels"))         return "PR"  // reels (ig ou fb)
-  if(n.includes("stories"))       return "PS"  // stories (ig, fb ou msg)
-  if(n.includes("explorehome"))   return "PH"  // explore home (grid)
-  if(n.includes("explore"))       return "PE"  // explore
-  if(n.includes("search"))        return "PQ"  // busca
-  if(n.includes("marketplace"))   return "PM"  // marketplace
-  if(n.includes("instream"))      return "PI"  // in-stream video
-  if(n.includes("video"))         return "PI"  // video feeds
-  if(n.includes("messenger"))     return "PG"  // messenger
-  if(n.includes("audience"))      return "PA"  // audience network
-  if(n.includes("feed"))          return "PF"  // feed (qualquer)
-  return "PO"                                  // outro nao mapeado
+  if(n.includes("profilereels"))  return "PP"
+  if(n.includes("reelsoverlay"))  return "PV"
+  if(n.includes("reels"))         return "PR"
+  if(n.includes("stories"))       return "PS"
+  if(n.includes("explorehome"))   return "PH"
+  if(n.includes("explore"))       return "PE"
+  if(n.includes("search"))        return "PQ"
+  if(n.includes("marketplace"))   return "PM"
+  if(n.includes("instream"))      return "PI"
+  if(n.includes("video"))         return "PI"
+  if(n.includes("messenger"))     return "PG"
+  if(n.includes("audience"))      return "PA"
+  if(n.includes("feed"))          return "PF"
+  return "PO"
 }
 
 function classSrc(s){
   if(!s || s.includes("{{")) return "SU"
-  if(s === "ig")  return "SI"  // Instagram
-  if(s === "fb")  return "SF"  // Facebook
-  if(s === "msg") return "SM"  // Messenger
-  if(s === "an")  return "SA"  // Audience Network
+  if(s === "ig")  return "SI"
+  if(s === "fb")  return "SF"
+  if(s === "msg") return "SM"
+  if(s === "an")  return "SA"
   return "SU"
 }
 
@@ -212,10 +208,6 @@ function medirRAM(){
 
 // =========================================================
 // WEBRTC
-// RH = domestico   (192.168.x.x)
-// RC = corporativo  (10.x.x.x)
-// RV = VPN provavel (172.16-31.x.x)
-// RU = nao detectado
 // =========================================================
 function medirWebRTC(){
   return new Promise(resolve => {
@@ -255,6 +247,14 @@ function medirWebRTC(){
 }
 
 // =========================================================
+// FBC e FBP — cookies do Meta
+// =========================================================
+function getCookie(name){
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return match ? match[2] : ""
+}
+
+// =========================================================
 // OUTROS SINCRONOS
 // =========================================================
 const tema    = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
@@ -282,7 +282,7 @@ const [velTag, batObj, movimento, redeTag] = await Promise.all([
 const ram = medirRAM()
 
 // =========================================================
-// DEBUG — ative DEBUG = true no topo para usar
+// DEBUG
 // =========================================================
 if(DEBUG){
   alert(
@@ -322,13 +322,6 @@ if(DEBUG){
 
 // =========================================================
 // MONTAGEM DO UC FINAL
-//
-// Limite: 48 chars
-// O ID (10 chars fixos) e SEMPRE protegido no final
-// O corpo ocupa os primeiros 38 chars
-//
-// ORDEM:
-// [base16] T N bat C tema R V device conexao M rede placement source ID
 // =========================================================
 const idTag = "ID" + userId  // sempre 10 chars
 
@@ -350,9 +343,42 @@ const corpo = (
 ).replace(/[^a-zA-Z0-9]/g, "")
 
 const MAX          = 48
-const espacoCorpo  = MAX - idTag.length   // 38 chars para o corpo
+const espacoCorpo  = MAX - idTag.length
 const corpoFinal   = corpo.slice(0, espacoCorpo)
-const finalUC      = corpoFinal + idTag   // ID sempre completo no final
+const finalUC      = corpoFinal + idTag
+
+// =========================================================
+// SALVAR NO GOOGLE SHEETS (fire-and-forget)
+// =========================================================
+try {
+  const fbc = getCookie("_fbc") || params.get("fbclid") || ""
+  const fbp = getCookie("_fbp") || ""
+
+  const agora = new Date()
+  const data_hora = agora.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+
+  const payload = {
+    data_hora,
+    external_id : userId,
+    fbc,
+    fbp,
+    placement   : placementTag,
+    source      : sourceTag,
+    device,
+    conexao,
+    rede        : redeTag,
+    velocidade  : velTag,
+    uc_completo : finalUC
+  }
+
+  fetch(SHEETS_URL, {
+    method  : "POST",
+    mode    : "no-cors",
+    headers : { "Content-Type": "application/json" },
+    body    : JSON.stringify(payload)
+  }).catch(() => {})
+
+} catch(e) {}
 
 // =========================================================
 // REDIRECT
