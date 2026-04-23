@@ -302,7 +302,7 @@ if(DEBUG){
 }
 
 // =========================================================
-// EVENTOS META
+// EVENTOS META — sinais individuais
 // =========================================================
 ;[
   tempoTag,
@@ -319,6 +319,72 @@ if(DEBUG){
   placementTag,
   sourceTag
 ].forEach(enviarEvento)
+
+// =========================================================
+// HORA DO CLIQUE — envia evento H00 a H23 conforme hora atual
+// =========================================================
+const horaTag = "H" + String(new Date().getHours()).padStart(2, "0")
+enviarEvento(horaTag)
+
+// =========================================================
+// BROWSER TAG — EX (navegador externo) ou IX (Instagram interno)
+// Extraído do parâmetro UC recebido na URL
+// =========================================================
+const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
+
+// =========================================================
+// MAPA DE RUNTIME — todas as variáveis disponíveis para as regras
+// Usado pelo bloco de eventos personalizados abaixo
+// =========================================================
+const RUNTIME = {
+  T         : tempoTag,
+  N         : velTag,
+  B         : batObj.bateria,
+  C         : batObj.carregando,
+  Tema      : tema,
+  RAM       : ram,
+  V         : vib,
+  Device    : device,
+  Conexao   : conexao,
+  Movimento : movimento,
+  Rede      : redeTag,
+  Placement : placementTag,
+  Source    : sourceTag,
+  Browser   : browserTag,
+  Hora      : horaTag,
+}
+
+// =========================================================
+// EVENTOS PERSONALIZADOS — TOP RANKING
+// ---------------------------------------------------------
+// TOP02 → evento com 2 variáveis combinadas
+// TOP03 → evento com 3 variáveis combinadas
+// TOP04 → evento com 4 variáveis combinadas
+//
+// COMO USAR:
+//   1. No Analisador, clique em "Copiar Top N" na etapa desejada
+//   2. Cole o bloco copiado ENTRE as marcações ▼ e ▲ abaixo
+//   3. Salve o arquivo — pronto
+//
+// O bloco copiado tem este formato:
+//
+//   const REGRAS_TOP = [
+//     { Param1: "Val1", Param2: "Val2" },  // #1 → X%
+//     { Param1: "Val3", Param2: "Val4" },  // #2 → X%
+//     ...
+//   ]
+//   const nomeEvento = "TOP02"   ← nome já vem preenchido
+//   const bateuRegra = REGRAS_TOP.some(regra =>
+//     Object.entries(regra).every(([p, v]) => RUNTIME[p] === v)
+//   )
+//   if (bateuRegra) enviarEvento(nomeEvento)
+// =========================================================
+
+// ▼▼▼▼▼▼▼▼▼▼▼▼ COLE O BLOCO DO ANALISADOR ABAIXO ▼▼▼▼▼▼▼▼▼▼▼▼
+
+
+
+// ▲▲▲▲▲▲▲▲▲▲▲▲ FIM DO BLOCO DO ANALISADOR ▲▲▲▲▲▲▲▲▲▲▲▲
 
 // =========================================================
 // MONTAGEM DO UC FINAL
