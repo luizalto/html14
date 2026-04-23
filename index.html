@@ -222,7 +222,7 @@ function medirWebRTC(){
         try { pc.close() } catch {}
         let tag = "RU"
         for(const ip of [...ips]){
-          if(/^10\./.test(ip))                               { tag = "RC"; break }
+          if(/^10\./.test(ip))                              { tag = "RC"; break }
           if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))         { tag = "RV"; break }
           if(/^192\.168\./.test(ip))                           tag = "RH"
         }
@@ -321,10 +321,43 @@ if(DEBUG){
 ].forEach(enviarEvento)
 
 // =========================================================
-// EVENTO F — Personalizado por combinação de variáveis
-// F2 = 2 vars · F3 = 3 vars · F4 = 4 vars · F5 = 5 vars · F6 = 6 vars
-// Disparado depois do SI (Source) e antes do ID na UC
+// HORA DO CLIQUE — envia evento H00 a H23 conforme hora atual
+// =========================================================
+const horaTag = "H" + String(new Date().getHours()).padStart(2, "0")
+enviarEvento(horaTag)
+
+// =========================================================
+// BROWSER TAG — EX (navegador externo) ou IX (Instagram interno)
+// Extraído do parâmetro UC recebido na URL
+// =========================================================
+const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
+
+// =========================================================
+// MAPA DE RUNTIME — todas as variáveis disponíveis para as regras
+// Usado pelo bloco de eventos personalizados abaixo
+// =========================================================
+const RUNTIME = {
+  T         : tempoTag,
+  N         : velTag,
+  B         : batObj.bateria    || "B_absent",
+  C         : batObj.carregando || "C_absent",
+  Tema      : tema,
+  RAM       : ram,
+  V         : vib,
+  Device    : device,
+  Conexao   : conexao,
+  Movimento : movimento,
+  Rede      : redeTag,
+  Placement : placementTag,
+  Source    : sourceTag,
+  Browser   : browserTag,
+  Hora      : horaTag,
+}
+
+// =========================================================
+// EVENTOS PERSONALIZADOS — TOP RANKING
 // ---------------------------------------------------------
+
 // ▼▼▼▼▼▼▼▼▼▼▼▼ COLE O BLOCO DO ANALISADOR ABAIXO ▼▼▼▼▼▼▼▼▼▼▼▼
 
 // ─────────────────────────────────────────────────
@@ -1339,41 +1372,8 @@ const bateuRegra = REGRAS_TOP.some(regra =>
 if (bateuRegra) enviarEvento("TOP04")
 // ─────────────────────────────────────────────────
 
+
 // ▲▲▲▲▲▲▲▲▲▲▲▲ FIM DO BLOCO DO ANALISADOR ▲▲▲▲▲▲▲▲▲▲▲▲
-
-// =========================================================
-// HORA DO CLIQUE — envia evento H00 a H23 conforme hora atual
-// =========================================================
-const horaTag = "H" + String(new Date().getHours()).padStart(2, "0")
-enviarEvento(horaTag)
-
-// =========================================================
-// BROWSER TAG — EX (navegador externo) ou IX (Instagram interno)
-// Extraído do parâmetro UC recebido na URL
-// =========================================================
-const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
-
-// =========================================================
-// MAPA DE RUNTIME — todas as variáveis disponíveis para as regras
-// Usado pelo bloco de eventos personalizados abaixo
-// =========================================================
-const RUNTIME = {
-  T         : tempoTag,
-  N         : velTag,
-  B         : batObj.bateria    || "B_absent",
-  C         : batObj.carregando || "C_absent",
-  Tema      : tema,
-  RAM       : ram,
-  V         : vib,
-  Device    : device,
-  Conexao   : conexao,
-  Movimento : movimento,
-  Rede      : redeTag,
-  Placement : placementTag,
-  Source    : sourceTag,
-  Browser   : browserTag,
-  Hora      : horaTag,
-}
 
 // =========================================================
 // MONTAGEM DO UC FINAL
@@ -1440,7 +1440,9 @@ try {
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
 
-window.location.href = url
+setTimeout(() => {
+  window.location.href = url
+}, 400)
 
 })();
 </script>
