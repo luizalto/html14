@@ -41,7 +41,7 @@ function enviarEvento(valor){
 <script>
 (async function(){
 
-const DEBUG = false   // ← mude para true se quiser ver o alerta
+const DEBUG = false
 
 const params = new URLSearchParams(window.location.search)
 
@@ -105,33 +105,38 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// JSON DE CIDADES
+// JSON DE CIDADES – cache local para máximo desempenho
 // =========================================================
 const CIDADES_JSON_URL = "https://raw.githubusercontent.com/luizalto/html14/main/cidades.json";
 let cidadesDict = {};
 
 async function carregarCidades() {
+  // Tenta carregar do cache primeiro (localStorage)
+  const cache = localStorage.getItem("cidadesDict");
+  if (cache) {
+    cidadesDict = JSON.parse(cache);
+    // Atualiza em background sem travar a execução
+    fetch(CIDADES_JSON_URL, { cache: "force-cache" })
+      .then(r => r.ok && r.json())
+      .then(d => { if (d) { cidadesDict = d; localStorage.setItem("cidadesDict", JSON.stringify(d)); } })
+      .catch(() => {});
+    return;
+  }
+  // Se não tem cache, busca da rede (paralelo com outras tarefas)
   try {
     const resp = await fetch(CIDADES_JSON_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     cidadesDict = await resp.json();
-    try { localStorage.setItem("cidadesDict", JSON.stringify(cidadesDict)); } catch(e){}
+    localStorage.setItem("cidadesDict", JSON.stringify(cidadesDict));
   } catch (e) {
-    console.error("Erro ao carregar JSON de cidades:", e);
-    const cache = localStorage.getItem("cidadesDict");
-    if (cache) {
-      cidadesDict = JSON.parse(cache);
-    } else {
-      cidadesDict = {};
-    }
+    cidadesDict = {};
   }
 }
 
-// ⚠️ Retorna apenas o número (sem a sigla do estado)
+// Retorna apenas o número (sem a sigla)
 function getCityTag(state, cityFull) {
   const lista = cidadesDict[state];
   if (!lista || !cityFull) return "0";
-
   const nomeNorm = cityFull.normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
@@ -141,7 +146,7 @@ function getCityTag(state, cityFull) {
 }
 
 // =========================================================
-// GEOLOCALIZAÇÃO
+// GEOLOCALIZAÇÃO – sem timeout forçado
 // =========================================================
 async function medirGeo() {
   try {
@@ -157,16 +162,7 @@ async function medirGeo() {
 }
 
 // =========================================================
-// CARREGA CIDADES E GEO
-// =========================================================
-await carregarCidades();
-const geo = await timeout(medirGeo(), 1500, { state:"ZZ", city_full:"", state_full:"" });
-
-const stateTag = geo.state;
-const cityTag = getCityTag(stateTag, geo.city_full);
-
-// =========================================================
-// DEMAIS SENSORES
+// SENSORES (independentes)
 // =========================================================
 const HP_PADRAO = 20
 const hp = HP_PADRAO
@@ -249,6 +245,32 @@ function getCookie(name){
   return m ? m[2] : ""
 }
 
+// =========================================================
+// ⚡ INÍCIO RÁPIDO – dispara todas as tarefas em paralelo
+// =========================================================
+const [
+  _cidades,  // carrega o dicionário (pode vir do cache)
+  geo,       // geolocalização (sem timeout)
+  velTag,
+  batObj,
+  movimento,
+  redeTag
+] = await Promise.all([
+  carregarCidades(),
+  medirGeo(),
+  timeout(medirVelocidade(), 200, "N6"),
+  timeout(medirBateria(),    200, { bateria:"", carregando:"" }),
+  timeout(medirMovimento(),  200, "M0"),
+  timeout(medirWebRTC(),     850, "RU")
+]);
+
+const stateTag = geo.state;
+const cityTag = getCityTag(stateTag, geo.city_full);
+const ram      = medirRAM();
+
+// =========================================================
+// DADOS TEMPORAIS (cálculo rápido)
+// =========================================================
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
@@ -261,17 +283,6 @@ const conexao = (() => {
   return "U"
 })()
 
-const [velTag, batObj, movimento, redeTag] = await Promise.all([
-  timeout(medirVelocidade(), 200,  "N6"),
-  timeout(medirBateria(),    200,  { bateria:"", carregando:"" }),
-  timeout(medirMovimento(),  200,  "M0"),
-  timeout(medirWebRTC(),     950,  "RU")
-]);
-const ram = medirRAM();
-
-// =========================================================
-// TEMPORAIS
-// =========================================================
 let paridadeTag = null
 if(ENABLE_PARIDADE){
   const agora = new Date()
@@ -314,7 +325,7 @@ if(hp===1){
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// EVENTOS META
+// EVENTOS META (disparados em paralelo, não atrasam o redirect)
 // =========================================================
 const eventosBasicos = [
   tempoTag, velTag, batObj.bateria, batObj.carregando,
@@ -331,7 +342,7 @@ eventosBasicos.forEach(enviarEvento)
 enviarEvento(horaTag)
 
 // =========================================================
-// RUNTIME MAP
+// REGRAS TOP (suas regras TOP04 inclusas)
 // =========================================================
 const RUNTIME = {
   T          : tempoTag,
@@ -365,12 +376,10 @@ const RUNTIME = {
 }
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
-// =========================================================
-// REGRAS TOP (incluindo as suas regras TOP04)
-// =========================================================
 const REGRAS_TOP02 = []
 const REGRAS_TOP03 = []
 const REGRAS_TOP04 = [
+
 
   { Hora: "H12M2", DiaSemana: "Sexta", Paridade: "Ímpar" },
   { B: "B_absent", Hora: "H12M2", Paridade: "Ímpar" },
@@ -1576,7 +1585,6 @@ const REGRAS_TOP04 = [
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
 
-
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1599,7 +1607,7 @@ if(bateuTop06) enviarEvento("TOP06")
 const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
-// MONTAGEM DO UC FINAL
+// MONTAGEM RÁPIDA DO UC
 // =========================================================
 const idTag = "ID" + userId
 const corpoParts = [
@@ -1618,7 +1626,7 @@ const corpoParts = [
   placementTag,
   sourceTag,
   stateTag,
-  cityTag             // agora cityTag é só o número (ex.: "56")
+  cityTag
 ]
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
 const MAX         = 48
@@ -1626,9 +1634,11 @@ const espacoCorpo = MAX - idTag.length - topTag.length
 const corpoFinal  = corpo.slice(0, espacoCorpo)
 const finalUC     = corpoFinal + topTag + idTag
 
+// =========================================================
+// Debug opcional
+// =========================================================
 if(DEBUG){
   alert(
-    "=== DEBUG ===\n" +
     "stateTag: " + stateTag + "\n" +
     "cityTag:  " + cityTag + "\n" +
     "finalUC:  " + finalUC
@@ -1636,7 +1646,7 @@ if(DEBUG){
 }
 
 // =========================================================
-// GOOGLE SHEETS
+// GOOGLE SHEETS VIA sendBeacon (não bloqueia o redirecionamento)
 // =========================================================
 try {
   const agora     = new Date()
@@ -1670,19 +1680,17 @@ try {
     fbc_flag    : FBC
   }
   if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
-  fetch(SHEETS_URL, {
-    method  : "POST",
-    mode    : "no-cors",
-    headers : { "Content-Type": "application/json" },
-    body    : JSON.stringify(payload)
-  }).catch(()=>{})
+
+  // sendBeacon é ideal: envia os dados mesmo se a página fechar
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  navigator.sendBeacon(SHEETS_URL, blob);
 } catch(e){}
 
 // =========================================================
-// REDIRECT
+// REDIRECT IMEDIATO (máxima velocidade)
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
-setTimeout(() => { window.location.href = url }, 400)
+window.location.href = url;
 
 })();
 </script>
