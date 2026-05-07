@@ -131,19 +131,19 @@ const stateTag = classState(stateRaw)  // sempre 2 chars
 
 // =========================================================
 // CIDADE — macro {{city}} do Meta
-// Pega as 3 primeiras letras da cidade em uppercase, sem acento.
-// Ex: "São Paulo" → "SAO" · "Rio de Janeiro" → "RIO" · sem dado → "ZZZ"
+// Pega as 2 primeiras letras da cidade em uppercase, sem acento.
+// Ex: "São Paulo" → "SA" · "Rio de Janeiro" → "RI" · sem dado → "ZZ"
 // =========================================================
 function classCity(raw){
-  if(!raw || raw.includes("{{")) return "ZZZ"
+  if(!raw || raw.includes("{{")) return "ZZ"
   const clean = raw.trim()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
     .toUpperCase()
-  return clean.slice(0, 3) || "ZZZ"
+  return clean.slice(0, 2) || "ZZ"
 }
 const cityRaw = params.get("city") || ""
-const cityTag = classCity(cityRaw)   // sempre 3 chars
+const cityTag = classCity(cityRaw)   // sempre 2 chars
 
 // =========================================================
 // PLACEMENT + SOURCE
@@ -1614,8 +1614,6 @@ const REGRAS_TOP04 = [
   { Hora: "H21M6", DiaSemana: "Quarta", Min_Dezena: "Par" },
   { B: "B10", DiaSemana: "Quarta", Seg_Metade: "Seg_00_30" },
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
-
-
 
 
 ]
