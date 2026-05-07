@@ -108,32 +108,46 @@ const sourceTag    = classSrc(srcRaw)
 // CARREGAMENTO DO JSON DE CIDADES (hospedado no GitHub)
 // =========================================================
 // ⚠️ Substitua pela URL raw do seu arquivo cidades.json
-const CIDADES_JSON_URL = "https://github.com/luizalto/html14/raw/refs/heads/main/cidades.json";
+// URL corrigida (confirme se é essa mesmo)
+// URL corrigida (confirme se é essa mesmo)
+const CIDADES_JSON_URL = "https://raw.githubusercontent.com/luizalto/html14/main/cidades.json";
 let cidadesDict = {};
 
 async function carregarCidades() {
   try {
+    console.log("Carregando cidades de:", CIDADES_JSON_URL);
     const resp = await fetch(CIDADES_JSON_URL);
-    if (!resp.ok) throw new Error("Falha ao carregar JSON de cidades");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     cidadesDict = await resp.json();
+    console.log("Cidades carregadas. Exemplo SP:", cidadesDict["SP"]?.slice(0,5));
+    // Cache local
+    try { localStorage.setItem("cidadesDict", JSON.stringify(cidadesDict)); } catch(e){}
   } catch (e) {
-    console.error("Erro ao carregar cidades:", e);
-    cidadesDict = {};   // fallback → cityTag será "ZZ0"
+    console.error("Erro no fetch:", e);
+    const cache = localStorage.getItem("cidadesDict");
+    if (cache) {
+      cidadesDict = JSON.parse(cache);
+      console.log("Usando cache local.");
+    } else {
+      cidadesDict = {};
+    }
   }
 }
 
 function getCityTag(state, cityFull) {
   const lista = cidadesDict[state];
-  if (!lista || !cityFull) return "ZZ0";
-
-  // Normaliza o nome da cidade (remove acentos, espaços, hífens, apóstrofos)
+  if (!lista || !cityFull) {
+    console.warn(`Falha: state=${state}, cityFull=${cityFull}, lista=${!!lista}`);
+    return "ZZ0";
+  }
   const nomeNorm = cityFull.normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
     .toUpperCase();
-
-  // Busca linear (a lista já está em ordem alfabética)
   const idx = lista.indexOf(nomeNorm);
+  if (idx === -1) {
+    console.warn(`Cidade não encontrada: "${nomeNorm}" em ${state}`);
+  }
   return idx >= 0 ? state + (idx + 1) : "ZZ0";
 }
 
