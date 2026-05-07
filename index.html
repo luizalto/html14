@@ -70,7 +70,7 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT + SOURCE (únicas macros reais do Meta)
+// PLACEMENT + SOURCE
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
@@ -105,41 +105,87 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// ESTADO via IP — region_code da ipapi.co
-// Retorna sigla BR de 2 letras. Ex: SP, RJ, SC...
-// Fallback: ZZ se não conseguir
+// GEOLOCALIZAÇÃO MULTI-FONTE + CACHE
 // =========================================================
-async function medirGeo(){
+async function fetchGeoFromAPI(url) {
+  const resp = await fetch(url, { signal: AbortSignal.timeout(2000) })
+  if (!resp.ok) throw new Error("bad response")
+  return resp.json()
+}
+
+function extrairGeo(d) {
+  const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
+  const state = rc.length === 2 ? rc : "ZZ"
+  const cityRaw = (d.city || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toUpperCase()
+  const city = cityRaw.slice(0, 6) || "ZZ"
+  return { state, city, city_full: d.city || "", state_full: d.region || "" }
+}
+
+const GEO_CACHE_KEY = "geo_cache"
+const GEO_CACHE_TTL = 30 * 60 * 1000 // 30 minutos
+
+async function medirGeo() {
+  // 1. Tentar cache válido
   try {
-    const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(1500) })
-    if(!r.ok) throw new Error("geo fail")
-    const d = await r.json()
+    const cached = JSON.parse(sessionStorage.getItem(GEO_CACHE_KEY))
+    if (cached && cached.expires > Date.now()) {
+      return cached.data
+    }
+  } catch {}
 
-    // Estado: region_code já vem como "SP", "RJ", etc.
-    const rc    = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
-    const state = rc.length === 2 ? rc : "ZZ"
+  // 2. Lista de APIs em ordem de preferência
+  const apis = [
+    () => fetchGeoFromAPI("https://ipapi.co/json/"),
+    () => fetchGeoFromAPI("https://ipwho.is/"),
+    () => fetchGeoFromAPI("https://freeipapi.com/api/json")
+  ]
 
-    // Cidade: 2 primeiras letras sem acento
-    const cityRaw = (d.city || "")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z]/g, "")
-      .toUpperCase()
-    const city = cityRaw.slice(0, 6) || "ZZ"
-
-    return { state, city, city_full: d.city || "", state_full: d.region || "" }
-  } catch {
-    return { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+  let data = null
+  for (const apiFn of apis) {
+    try {
+      const json = await apiFn()
+      data = extrairGeo(json)
+      if (data.state !== "ZZ" || data.city !== "ZZ") break // sucesso
+    } catch {}
   }
+
+  // 3. Se todas falharam, tenta reutilizar cache expirado
+  if (!data) {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(GEO_CACHE_KEY))
+      if (cached && cached.data) {
+        data = cached.data
+      }
+    } catch {}
+  }
+
+  // 4. Fallback final
+  if (!data) {
+    data = { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+  }
+
+  // 5. Atualiza cache (mesmo que seja ZZ, para evitar requisições repetidas imediatas)
+  try {
+    sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify({
+      data,
+      expires: Date.now() + GEO_CACHE_TTL
+    }))
+  } catch {}
+
+  return data
 }
 
 // =========================================================
-// DIVISÃO DA HORA
+// DIVISÃO DA HORA (mantida para eventos, mas NÃO na UC)
 // =========================================================
 const HP_PADRAO = 20
 const hp = HP_PADRAO
 
 const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
-const tempoTag = "T1"
+const tempoTag = "T1"   // só usado nos eventos, não na UC
 
 // =========================================================
 // VELOCIDADE
@@ -238,7 +284,7 @@ function getCookie(name){
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-const vib    = navigator.vibrate ? "V1" : "V0"
+const vib    = navigator.vibrate ? "V1" : "V0"   // usado nos eventos, não na UC
 const conexao = (() => {
   const c = navigator.connection
   if(!c) return "U"
@@ -248,14 +294,14 @@ const conexao = (() => {
 })()
 
 // =========================================================
-// PARALELO — inclui geo junto com os outros sensores
+// PARALELO — inclui geo com os outros sensores
 // =========================================================
 const [velTag, batObj, movimento, redeTag, geo] = await Promise.all([
   timeout(medirVelocidade(), 200,  "N6"),
   timeout(medirBateria(),    200,  { bateria:"", carregando:"" }),
   timeout(medirMovimento(),  200,  "M0"),
   timeout(medirWebRTC(),     950,  "RU"),
-  timeout(medirGeo(),        1500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" })
+  timeout(medirGeo(),        2500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" }) // tempo maior para fallbacks
 ])
 const ram = medirRAM()
 
@@ -314,7 +360,7 @@ const eventosBasicos = [
   tempoTag, velTag, batObj.bateria, batObj.carregando,
   tema, ram, vib, device, conexao, movimento, redeTag,
   placementTag, sourceTag,
-  stateTag, cityTag,          // estado e cidade via IP
+  stateTag, cityTag,
   minDezena, minUnidade, segMetade, horaPar,
   diaSemana, diaPar, periodo,
   (bPar!==null?bPar:""), (nPar!==null?nPar:""),
@@ -360,11 +406,12 @@ const RUNTIME = {
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
 // =========================================================
-// REGRAS TOP — cole os resultados do analisador aqui
+// REGRAS TOP
 // =========================================================
 const REGRAS_TOP02 = []
 const REGRAS_TOP03 = []
 const REGRAS_TOP04 = [
+
 
   { Hora: "H12M2", DiaSemana: "Sexta", Paridade: "Ímpar" },
   { B: "B_absent", Hora: "H12M2", Paridade: "Ímpar" },
@@ -1570,6 +1617,7 @@ const REGRAS_TOP04 = [
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
 
+
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1592,35 +1640,28 @@ if(bateuTop06) enviarEvento("TOP06")
 const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
-// MONTAGEM DO UC FINAL
-// ─────────────────────────────────────────────────────────
-// Estrutura:
-// [baseUC][T][N][B][C][Tema][RAM][V][Device][Conexao]
-// [Mov][Rede][Placement][Source][State][City][topTag][ID]
-//
-// State = 2 chars (SP, RJ, ZZ...)
-// City  = 2 chars (SA, RI, ZZ...)
-// Total máx: 48 chars
+// MONTAGEM DO UC FINAL (sem tempoTag e vib)
 // =========================================================
 const idTag = "ID" + userId  // 10 chars fixos
 
+// ATENÇÃO: tempoTag e vib foram removidos do array abaixo
 const corpoParts = [
   baseUC,
-  tempoTag,
+  // tempoTag,              // REMOVIDO
   velTag,
   batObj.bateria,
   batObj.carregando,
   tema,
   ram,
-  vib,
+  // vib,                   // REMOVIDO
   device,
   conexao,
   movimento,
   redeTag,
   placementTag,
   sourceTag,
-  stateTag,   // SP, RJ, SC... ou ZZ  (via IP)
-  cityTag     // SA, RI, BE... ou ZZ  (via IP, 2 chars)
+  stateTag,
+  cityTag
 ]
 
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
