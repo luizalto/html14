@@ -105,69 +105,78 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// JSON DE CIDADES – cache local para máximo desempenho
+// TAG DE CIDADE: estado + 5 primeiras letras (sem acentos)
+// Exemplo: SP + SAOPA = SPSAOPA
 // =========================================================
-const CIDADES_JSON_URL = "https://raw.githubusercontent.com/luizalto/html14/main/cidades.json";
-let cidadesDict = {};
-
-async function carregarCidades() {
-  // Tenta carregar do cache primeiro (localStorage)
-  const cache = localStorage.getItem("cidadesDict");
-  if (cache) {
-    cidadesDict = JSON.parse(cache);
-    // Atualiza em background sem travar a execução
-    fetch(CIDADES_JSON_URL, { cache: "force-cache" })
-      .then(r => r.ok && r.json())
-      .then(d => { if (d) { cidadesDict = d; localStorage.setItem("cidadesDict", JSON.stringify(d)); } })
-      .catch(() => {});
-    return;
-  }
-  // Se não tem cache, busca da rede (paralelo com outras tarefas)
-  try {
-    const resp = await fetch(CIDADES_JSON_URL);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    cidadesDict = await resp.json();
-    localStorage.setItem("cidadesDict", JSON.stringify(cidadesDict));
-  } catch (e) {
-    cidadesDict = {};
-  }
-}
-
-// Retorna apenas o número (sem a sigla)
 function getCityTag(state, cityFull) {
-  const lista = cidadesDict[state];
-  if (!lista || !cityFull) return "0";
+  if (!state || state === "ZZ" || !cityFull) return "ZZ0";
   const nomeNorm = cityFull.normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
     .toUpperCase();
-  const idx = lista.indexOf(nomeNorm);
-  return idx >= 0 ? String(idx + 1) : "0";
+  if (!nomeNorm) return "ZZ0";
+  return state + nomeNorm.slice(0, 6);
 }
 
 // =========================================================
-// GEOLOCALIZAÇÃO – sem timeout forçado
+// GEOLOCALIZAÇÃO resiliente (com cache e atualização em bg)
 // =========================================================
 async function medirGeo() {
+  const cache = localStorage.getItem("geoData");
+  if (cache) {
+    const geo = JSON.parse(cache);
+    atualizarGeoEmBackground();
+    return geo;
+  }
+  return await buscarGeoComTimeout();
+}
+
+async function buscarGeoComTimeout() {
   try {
-    const r = await fetch("https://ipapi.co/json/");
-    if (!r.ok) throw new Error("geo falhou");
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 3000);
+    const r = await fetch("https://ipapi.co/json/", { signal: controller.signal });
+    clearTimeout(id);
+    if (!r.ok) throw new Error("geo fail");
     const d = await r.json();
     const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase();
-    const state = rc.length === 2 ? rc : "ZZ";
-    return { state, city_full: d.city || "", state_full: d.region || "" };
+    const geo = {
+      state: rc.length === 2 ? rc : "ZZ",
+      city_full: d.city || "",
+      state_full: d.region || ""
+    };
+    localStorage.setItem("geoData", JSON.stringify(geo));
+    return geo;
   } catch (e) {
     return { state: "ZZ", city_full: "", state_full: "" };
   }
 }
 
+async function atualizarGeoEmBackground() {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 2000);
+    const r = await fetch("https://ipapi.co/json/", { signal: controller.signal });
+    clearTimeout(id);
+    if (r.ok) {
+      const d = await r.json();
+      const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+      const geo = {
+        state: rc.length === 2 ? rc : "ZZ",
+        city_full: d.city || "",
+        state_full: d.region || ""
+      };
+      localStorage.setItem("geoData", JSON.stringify(geo));
+    }
+  } catch (e) {}
+}
+
 // =========================================================
-// SENSORES (independentes)
+// SENSORES (sem T1, sem V)
 // =========================================================
 const HP_PADRAO = 20
 const hp = HP_PADRAO
 const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
-const tempoTag = "T1"
 
 function classificarVel(mbps){
   if(mbps <= 0.5) return 1
@@ -246,17 +255,9 @@ function getCookie(name){
 }
 
 // =========================================================
-// ⚡ INÍCIO RÁPIDO – dispara todas as tarefas em paralelo
+// EXECUÇÃO PRINCIPAL
 // =========================================================
-const [
-  _cidades,  // carrega o dicionário (pode vir do cache)
-  geo,       // geolocalização (sem timeout)
-  velTag,
-  batObj,
-  movimento,
-  redeTag
-] = await Promise.all([
-  carregarCidades(),
+const [geo, velTag, batObj, movimento, redeTag] = await Promise.all([
   medirGeo(),
   timeout(medirVelocidade(), 200, "N6"),
   timeout(medirBateria(),    200, { bateria:"", carregando:"" }),
@@ -268,13 +269,14 @@ const stateTag = geo.state;
 const cityTag = getCityTag(stateTag, geo.city_full);
 const ram      = medirRAM();
 
-// =========================================================
-// DADOS TEMPORAIS (cálculo rápido)
-// =========================================================
+// Dados que não dependem de rede
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-const vib    = navigator.vibrate ? "V1" : "V0"
+
+// ❌ Removido: const vib = ...
+// ❌ Removido: tempoTag = "T1"
+
 const conexao = (() => {
   const c = navigator.connection
   if(!c) return "U"
@@ -325,11 +327,11 @@ if(hp===1){
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// EVENTOS META (disparados em paralelo, não atrasam o redirect)
+// EVENTOS META (sem V, sem T1)
 // =========================================================
 const eventosBasicos = [
-  tempoTag, velTag, batObj.bateria, batObj.carregando,
-  tema, ram, vib, device, conexao, movimento, redeTag,
+  velTag, batObj.bateria, batObj.carregando,
+  tema, ram, device, conexao, movimento, redeTag,
   placementTag, sourceTag,
   stateTag, cityTag,
   minDezena, minUnidade, segMetade, horaPar,
@@ -342,16 +344,14 @@ eventosBasicos.forEach(enviarEvento)
 enviarEvento(horaTag)
 
 // =========================================================
-// REGRAS TOP (suas regras TOP04 inclusas)
+// REGRAS TOP (vazias, sem TOP04)
 // =========================================================
 const RUNTIME = {
-  T          : tempoTag,
   N          : velTag,
   B          : batObj.bateria    || "B_absent",
   C          : batObj.carregando || "C_absent",
   Tema       : tema,
   RAM        : ram,
-  V          : vib,
   Device     : device,
   Conexao    : conexao,
   Movimento  : movimento,
@@ -1585,6 +1585,7 @@ const REGRAS_TOP04 = [
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
 
+
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1607,18 +1608,17 @@ if(bateuTop06) enviarEvento("TOP06")
 const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
-// MONTAGEM RÁPIDA DO UC
+// MONTAGEM DO UC (50 caracteres, sem T1, sem V)
 // =========================================================
 const idTag = "ID" + userId
 const corpoParts = [
   baseUC,
-  tempoTag,
   velTag,
   batObj.bateria,
   batObj.carregando,
   tema,
   ram,
-  vib,
+  // ❌ vib removido
   device,
   conexao,
   movimento,
@@ -1629,13 +1629,13 @@ const corpoParts = [
   cityTag
 ]
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
-const MAX         = 48
+const MAX         = 50
 const espacoCorpo = MAX - idTag.length - topTag.length
 const corpoFinal  = corpo.slice(0, espacoCorpo)
 const finalUC     = corpoFinal + topTag + idTag
 
 // =========================================================
-// Debug opcional
+// DEBUG
 // =========================================================
 if(DEBUG){
   alert(
@@ -1646,7 +1646,7 @@ if(DEBUG){
 }
 
 // =========================================================
-// GOOGLE SHEETS VIA sendBeacon (não bloqueia o redirecionamento)
+// GOOGLE SHEETS (sendBeacon)
 // =========================================================
 try {
   const agora     = new Date()
@@ -1681,13 +1681,12 @@ try {
   }
   if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
 
-  // sendBeacon é ideal: envia os dados mesmo se a página fechar
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   navigator.sendBeacon(SHEETS_URL, blob);
 } catch(e){}
 
 // =========================================================
-// REDIRECT IMEDIATO (máxima velocidade)
+// REDIRECT
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
 window.location.href = url;
