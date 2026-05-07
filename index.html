@@ -11,25 +11,17 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)
 }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
 
-// ===== USER ID =====
 function gerarId(){
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
-  for(let i = 0; i < 8; i++){
-    id += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
+  for(let i = 0; i < 8; i++) id += chars.charAt(Math.floor(Math.random() * chars.length))
   return id
 }
-
 function getUserId(){
   let id = localStorage.getItem('user_id')
-  if(!id || id.length !== 8){
-    id = gerarId()
-    localStorage.setItem('user_id', id)
-  }
+  if(!id || id.length !== 8){ id = gerarId(); localStorage.setItem('user_id', id) }
   return id
 }
-
 const userId = getUserId()
 
 fbq('init', '799819532599997', { external_id: userId })
@@ -42,68 +34,119 @@ function enviarEvento(valor){
   try { fbq('trackCustom', nome, { external_id: userId }) } catch {}
 }
 </script>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 </head>
 <body>
 <script>
 (async function(){
 
-// =========================================================
-// DEBUG MODE
-// =========================================================
 const DEBUG = false
 
-// =========================================================
-// TOGGLE DA VARIÁVEL PARIDADE (Par/Ímpar)
-// =========================================================
 const params = new URLSearchParams(window.location.search)
+
 const ENABLE_PARIDADE = (() => {
   const urlParam = params.get("paridade")
   if(urlParam !== null) return urlParam === "1"
-  return true   // padrão: ligado
+  return true
 })()
 
-if(DEBUG) console.log(`Paridade ativada? ${ENABLE_PARIDADE}`)
-
-// =========================================================
-// GOOGLE SHEETS — URL do Apps Script
-// =========================================================
 const SHEETS_URL = "https://script.google.com/macros/s/AKfycbyRp-cEQuFJpENz2zise9vxSZ8-xcF7mn4PmZvJ4_cohJYJODSZvTOLqQv9f2WOWOf6/exec"
 
-// =========================================================
-// TIMEOUT HELPER
-// =========================================================
 function timeout(promise, ms, fallback){
-  return Promise.race([
-    promise,
-    new Promise(res => setTimeout(() => res(fallback), ms))
-  ])
+  return Promise.race([promise, new Promise(res => setTimeout(() => res(fallback), ms))])
 }
 
 // =========================================================
-// PARAMS
+// PARAMS LINK + UC
 // =========================================================
 let LINK = null, UC = null
-
 const raw = params.get("dest")
 if(raw && raw.includes("|||")){
-  const p = raw.split("|||")
-  LINK = p[0]
-  UC   = p[1]
+  const p = raw.split("|||"); LINK = p[0]; UC = p[1]
 } else {
-  LINK = params.get("dest")
-  UC   = params.get("uc")
+  LINK = params.get("dest"); UC = params.get("uc")
 }
-
-if(!LINK || !UC){
-  throw new Error("Parametros invalidos")
-}
+if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT
+// IDADE — macro {{age}} do Meta
+// Tags: A1=18-24 · A2=25-34 · A3=35-44 · A4=45-54 · A5=55-64 · A6=65+ · A0=sem dado
+// =========================================================
+function classAge(raw){
+  if(!raw || raw.includes("{{")) return "A0"
+  const s = raw.trim()
+  if(s.startsWith("18")) return "A1"
+  if(s.startsWith("25")) return "A2"
+  if(s.startsWith("35")) return "A3"
+  if(s.startsWith("45")) return "A4"
+  if(s.startsWith("55")) return "A5"
+  if(s.startsWith("65")) return "A6"
+  return "A0"
+}
+const ageTag = classAge(params.get("age") || "")
+
+// =========================================================
+// GÊNERO — macro {{gender}} do Meta
+// Tags: M=masculino · F=feminino · G0=sem dado
+// =========================================================
+function classGender(raw){
+  if(!raw || raw.includes("{{")) return "G0"
+  const s = raw.trim().toLowerCase()
+  if(s === "male")   return "M"
+  if(s === "female") return "F"
+  return "G0"
+}
+const genderTag = classGender(params.get("gender") || "")
+
+// =========================================================
+// ESTADO — macro {{region}} do Meta
+// Retorna sigla BR de 2 letras. Ex: SP, RJ, MG...
+// Se não reconhecer, pega as 2 primeiras letras do nome.
+// =========================================================
+function classState(raw){
+  if(!raw || raw.includes("{{")) return "ZZ"  // sem dado
+  const s = raw.trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase()
+
+  const map = {
+    "acre":"AC","alagoas":"AL","amapa":"AP","amazonas":"AM",
+    "bahia":"BA","ceara":"CE","distrito federal":"DF","espirito santo":"ES",
+    "goias":"GO","maranhao":"MA","mato grosso do sul":"MS","mato grosso":"MT",
+    "minas gerais":"MG","para":"PA","paraiba":"PB","parana":"PR",
+    "pernambuco":"PE","piaui":"PI","rio de janeiro":"RJ",
+    "rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO",
+    "roraima":"RR","santa catarina":"SC","sao paulo":"SP",
+    "sergipe":"SE","tocantins":"TO"
+  }
+  if(map[s]) return map[s]
+
+  // Fallback: 2 primeiras letras uppercase sem acento
+  const clean = s.replace(/[^a-z]/g, "")
+  return clean.slice(0, 2).toUpperCase() || "ZZ"
+}
+const stateRaw = params.get("state") || ""
+const stateTag = classState(stateRaw)  // sempre 2 chars
+
+// =========================================================
+// CIDADE — macro {{city}} do Meta
+// Pega as 3 primeiras letras da cidade em uppercase, sem acento.
+// Ex: "São Paulo" → "SAO" · "Rio de Janeiro" → "RIO" · sem dado → "ZZZ"
+// =========================================================
+function classCity(raw){
+  if(!raw || raw.includes("{{")) return "ZZZ"
+  const clean = raw.trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toUpperCase()
+  return clean.slice(0, 3) || "ZZZ"
+}
+const cityRaw = params.get("city") || ""
+const cityTag = classCity(cityRaw)   // sempre 3 chars
+
+// =========================================================
+// PLACEMENT + SOURCE
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
@@ -126,7 +169,6 @@ function classPlacement(p){
   if(n.includes("feed"))          return "PF"
   return "PO"
 }
-
 function classSrc(s){
   if(!s || s.includes("{{")) return "SU"
   if(s === "ig")  return "SI"
@@ -135,24 +177,16 @@ function classSrc(s){
   if(s === "an")  return "SA"
   return "SU"
 }
-
 const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// DIVISÃO DA HORA (hp) – mesmo valor usado no analisador
+// DIVISÃO DA HORA
 // =========================================================
-const HP_PADRAO = 20;   // <-- altere conforme necessário
-const hp = HP_PADRAO;
+const HP_PADRAO = 20
+const hp = HP_PADRAO
 
-// =========================================================
-// BASE UC
-// =========================================================
-const baseUC = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
-
-// =========================================================
-// TEMPO
-// =========================================================
+const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
 const tempoTag = "T1"
 
 // =========================================================
@@ -166,12 +200,9 @@ function classificarVel(mbps){
   if(mbps <= 20)  return 10
   return 14
 }
-
 async function medirVelocidade(){
-  try {
-    const downlink = navigator.connection?.downlink || 5
-    return "N" + classificarVel(downlink)
-  } catch { return "N6" }
+  try { return "N" + classificarVel(navigator.connection?.downlink || 5) }
+  catch { return "N6" }
 }
 
 // =========================================================
@@ -180,10 +211,8 @@ async function medirVelocidade(){
 async function medirBateria(){
   try {
     const bat = await navigator.getBattery()
-    const pct = Math.round(bat.level * 10)
-    const nivel = pct < 2 ? "BL" : "B" + pct
-    const carregando = bat.charging ? "C1" : "C0"
-    return { bateria: nivel, carregando }
+    const pct  = Math.round(bat.level * 10)
+    return { bateria: pct < 2 ? "BL" : "B" + pct, carregando: bat.charging ? "C1" : "C0" }
   } catch { return { bateria: "", carregando: "" } }
 }
 
@@ -192,22 +221,16 @@ async function medirBateria(){
 // =========================================================
 function medirMovimento(){
   return new Promise(resolve => {
-    let detectado = false
-    function handler(e){
-      const acc = e.accelerationIncludingGravity
-      if(!acc) return
-      const total = Math.abs(acc.x||0) + Math.abs(acc.y||0) + Math.abs(acc.z||0)
-      if(total > 15) detectado = true
+    let det = false
+    function h(e){
+      const a = e.accelerationIncludingGravity
+      if(!a) return
+      if(Math.abs(a.x||0)+Math.abs(a.y||0)+Math.abs(a.z||0) > 15) det = true
     }
     if(typeof DeviceMotionEvent !== "undefined"){
-      window.addEventListener("devicemotion", handler)
-      setTimeout(() => {
-        window.removeEventListener("devicemotion", handler)
-        resolve(detectado ? "M1" : "M0")
-      }, 120)
-    } else {
-      resolve("M0")
-    }
+      window.addEventListener("devicemotion", h)
+      setTimeout(() => { window.removeEventListener("devicemotion", h); resolve(det?"M1":"M0") }, 120)
+    } else resolve("M0")
   })
 }
 
@@ -228,270 +251,166 @@ function medirRAM(){
 function medirWebRTC(){
   return new Promise(resolve => {
     try {
-      const pc  = new RTCPeerConnection({ iceServers: [] })
-      const ips = new Set()
-      let encerrado = false
-
+      const pc = new RTCPeerConnection({ iceServers: [] })
+      const ips = new Set(); let enc = false
       function encerrar(){
-        if(encerrado) return
-        encerrado = true
-        try { pc.close() } catch {}
+        if(enc) return; enc = true; try{pc.close()}catch{}
         let tag = "RU"
         for(const ip of [...ips]){
-          if(/^10\./.test(ip))                              { tag = "RC"; break }
-          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))         { tag = "RV"; break }
-          if(/^192\.168\./.test(ip))                           tag = "RH"
+          if(/^10\./.test(ip))                           { tag="RC"; break }
+          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))     { tag="RV"; break }
+          if(/^192\.168\./.test(ip))                       tag="RH"
         }
         resolve(tag)
       }
-
       pc.onicecandidate = e => {
-        if(!e || !e.candidate){ encerrar(); return }
+        if(!e||!e.candidate){ encerrar(); return }
         const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/)
         if(m) ips.add(m[1])
       }
-
       pc.createDataChannel('')
-      pc.createOffer()
-        .then(o => pc.setLocalDescription(o))
-        .catch(() => resolve("RU"))
-
-      setTimeout(() => encerrar(), 850)
-
+      pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>resolve("RU"))
+      setTimeout(()=>encerrar(), 850)
     } catch { resolve("RU") }
   })
 }
 
-// =========================================================
-// FBC e FBP — cookies do Meta
-// =========================================================
 function getCookie(name){
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-  return match ? match[2] : ""
+  const m = document.cookie.match(new RegExp('(^| )'+name+'=([^;]+)'))
+  return m ? m[2] : ""
 }
 
 // =========================================================
-// OUTROS SINCRONOS
+// SINCRONO
 // =========================================================
-const tema    = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
-const ua      = navigator.userAgent || ""
-const device  = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-const vib     = navigator.vibrate ? "V1" : "V0"
+const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
+const ua     = navigator.userAgent || ""
+const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
+const vib    = navigator.vibrate ? "V1" : "V0"
 const conexao = (() => {
   const c = navigator.connection
-  if(!c)                    return "U"
-  if(c.type === "wifi")     return "W"
-  if(c.type === "cellular") return "M"
+  if(!c) return "U"
+  if(c.type==="wifi") return "W"
+  if(c.type==="cellular") return "M"
   return "U"
 })()
 
 // =========================================================
-// EXECUCAO PARALELA
+// PARALELO
 // =========================================================
 const [velTag, batObj, movimento, redeTag] = await Promise.all([
   timeout(medirVelocidade(), 200, "N6"),
-  timeout(medirBateria(),    200, { bateria: "", carregando: "" }),
+  timeout(medirBateria(),    200, { bateria:"", carregando:"" }),
   timeout(medirMovimento(),  200, "M0"),
   timeout(medirWebRTC(),     950, "RU")
 ])
-
 const ram = medirRAM()
 
 // =========================================================
-// PARIDADE (calculada a partir do minuto atual)
+// TEMPORAIS
 // =========================================================
 let paridadeTag = null
 if(ENABLE_PARIDADE){
   const agora = new Date()
-  const minuto = agora.getMinutes()
-  paridadeTag = minuto % 2 === 0 ? "Par" : "Ímpar"
+  paridadeTag = agora.getMinutes() % 2 === 0 ? "Par" : "Impar"
 }
 
-// =========================================================
-// NOVAS VARIÁVEIS (requeridas pelo analisador)
-// =========================================================
-const agoraData = new Date()
-const hora = agoraData.getHours()
-const minuto = agoraData.getMinutes()
-const segundo = agoraData.getSeconds()
-const dia = agoraData.getDate()
-const diaSemana = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"][agoraData.getDay()]
+const agoraData  = new Date()
+const hora       = agoraData.getHours()
+const minuto     = agoraData.getMinutes()
+const segundo    = agoraData.getSeconds()
+const dia        = agoraData.getDate()
+const diaSemana  = ["Domingo","Segunda","Terca","Quarta","Quinta","Sexta","Sabado"][agoraData.getDay()]
 
-// Min_Dezena (dezena do minuto: 0-5 → par/ímpar)
-const dezena = Math.floor(minuto / 10)
-const minDezena = dezena % 2 === 0 ? "Par" : "Ímpar"
+const minDezena  = Math.floor(minuto/10) % 2 === 0 ? "Par" : "Impar"
+const minUnidade = (minuto%10) % 2 === 0 ? "Par" : "Impar"
+const segMetade  = segundo <= 30 ? "Seg0030" : "Seg3160"
+const horaPar    = hora % 2 === 0 ? "Par" : "Impar"
+const diaPar     = dia  % 2 === 0 ? "Par" : "Impar"
 
-// Min_Unidade (unidade do minuto)
-const unidade = minuto % 10
-const minUnidade = unidade % 2 === 0 ? "Par" : "Ímpar"
-
-// Seg_Metade (primeira ou segunda metade do minuto)
-const segMetade = segundo <= 30 ? "Seg_00_30" : "Seg_31_60"
-
-// Hora_Par (hora par ou ímpar)
-const horaPar = hora % 2 === 0 ? "Par" : "Ímpar"
-
-// Dia_Par (dia do mês par ou ímpar)
-const diaPar = dia % 2 === 0 ? "Par" : "Ímpar"
-
-// Periodo (Manhã, Tarde, Noite)
 let periodo = "Noite"
-if (hora >= 6 && hora <= 11) periodo = "Manhã"
-else if (hora >= 12 && hora <= 17) periodo = "Tarde"
+if(hora >= 6  && hora <= 11) periodo = "Manha"
+else if(hora >= 12 && hora <= 17) periodo = "Tarde"
 
-// B_Par (paridade do número da bateria)
-const bNum = parseInt((batObj.bateria.match(/\d+/) || [0])[0])
-const bPar = isNaN(bNum) ? null : (bNum % 2 === 0 ? "Par" : "Ímpar")
+const bNum = parseInt((batObj.bateria.match(/\d+/)||[0])[0])
+const bPar = isNaN(bNum) ? null : (bNum%2===0?"Par":"Impar")
+const nNum = parseInt((velTag.match(/\d+/)||[0])[0])
+const nPar = isNaN(nNum) ? null : (nNum%2===0?"Par":"Impar")
 
-// N_Par (paridade do número da velocidade)
-const nNum = parseInt((velTag.match(/\d+/) || [0])[0])
-const nPar = isNaN(nNum) ? null : (nNum % 2 === 0 ? "Par" : "Ímpar")
+const FBP = (getCookie("_fbp") !== "") ? 1 : 0
+const FBC = (getCookie("_fbc") !== "") ? 1 : 0
 
-// FBP e FBC (1 se cookie presente, 0 caso contrário)
-const fbpCookie = getCookie("_fbp")
-const fbcCookie = getCookie("_fbc")
-const FBP = (fbpCookie && fbpCookie !== "") ? 1 : 0
-const FBC = (fbcCookie && fbcCookie !== "") ? 1 : 0
-
-// =========================================================
-// DEBUG
-// =========================================================
-if(DEBUG){
-  alert(
-    "=== DEBUG UC ===\n" +
-    "pl bruto:     [" + plRaw         + "]\n" +
-    "src bruto:    [" + srcRaw        + "]\n" +
-    "placementTag: [" + placementTag  + "]\n" +
-    "sourceTag:    [" + sourceTag     + "]\n" +
-    "redeTag:      [" + redeTag       + "]\n" +
-    "velTag:       [" + velTag        + "]\n" +
-    "bateria:      [" + batObj.bateria + batObj.carregando + "]\n" +
-    "device:       [" + device        + "]\n" +
-    "conexao:      [" + conexao       + "]\n" +
-    "movimento:    [" + movimento     + "]\n" +
-    (ENABLE_PARIDADE ? "paridade:     [" + paridadeTag + "]\n" : "paridade:     [desativada]\n") +
-    "Min_Dezena:   [" + minDezena     + "]\n" +
-    "Min_Unidade:  [" + minUnidade    + "]\n" +
-    "Seg_Metade:   [" + segMetade     + "]\n" +
-    "Hora_Par:     [" + horaPar       + "]\n" +
-    "DiaSemana:    [" + diaSemana     + "]\n" +
-    "Dia_Par:      [" + diaPar        + "]\n" +
-    "Periodo:      [" + periodo       + "]\n" +
-    "B_Par:        [" + bPar          + "]\n" +
-    "N_Par:        [" + nPar          + "]\n" +
-    "FBP:          [" + FBP           + "]\n" +
-    "FBC:          [" + FBC           + "]\n" +
-    "userId:       [" + userId        + "]"
-  )
-}
-
-// =========================================================
-// EVENTOS META — sinais individuais
-// =========================================================
-const eventosBasicos = [
-  tempoTag,
-  velTag,
-  batObj.bateria,
-  batObj.carregando,
-  tema,
-  ram,
-  vib,
-  device,
-  conexao,
-  movimento,
-  redeTag,
-  placementTag,
-  sourceTag,
-  minDezena,
-  minUnidade,
-  segMetade,
-  horaPar,
-  diaSemana,
-  diaPar,
-  periodo,
-  (bPar !== null ? bPar : ""),
-  (nPar !== null ? nPar : ""),
-  "FBP" + FBP,
-  "FBC" + FBC
-]
-if(ENABLE_PARIDADE && paridadeTag) eventosBasicos.push(paridadeTag)
-
-eventosBasicos.forEach(enviarEvento)
-
-// =========================================================
-// HORA DO CLIQUE — granularidade configurável via parâmetro hp
-// =========================================================
-let horaTag;
-if (hp === 1) {
-  horaTag = "H" + String(hora).padStart(2, "0");
+let horaTag
+if(hp===1){
+  horaTag = "H" + String(hora).padStart(2,"0")
 } else {
-  const bucket = Math.min(Math.floor(minuto * hp / 60), hp - 1);
-  horaTag = "H" + String(hora).padStart(2, "0") + "M" + bucket;
+  const bucket = Math.min(Math.floor(minuto*hp/60), hp-1)
+  horaTag = "H" + String(hora).padStart(2,"0") + "M" + bucket
 }
-enviarEvento(horaTag);
 
-// =========================================================
-// BROWSER TAG — EX (navegador externo) ou IX (Instagram interno)
-// =========================================================
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// MAPA DE RUNTIME — todas as variáveis disponíveis para as regras
+// EVENTOS META
+// =========================================================
+const eventosBasicos = [
+  tempoTag, velTag, batObj.bateria, batObj.carregando,
+  tema, ram, vib, device, conexao, movimento, redeTag,
+  placementTag, sourceTag,
+  ageTag, genderTag, stateTag, cityTag,
+  minDezena, minUnidade, segMetade, horaPar,
+  diaSemana, diaPar, periodo,
+  (bPar!==null?bPar:""), (nPar!==null?nPar:""),
+  "FBP"+FBP, "FBC"+FBC
+]
+if(ENABLE_PARIDADE && paridadeTag) eventosBasicos.push(paridadeTag)
+eventosBasicos.forEach(enviarEvento)
+enviarEvento(horaTag)
+
+// =========================================================
+// RUNTIME MAP — todas as variáveis para as regras TOP
 // =========================================================
 const RUNTIME = {
-  T         : tempoTag,
-  N         : velTag,
-  B         : batObj.bateria    || "B_absent",
-  C         : batObj.carregando || "C_absent",
-  Tema      : tema,
-  RAM       : ram,
-  V         : vib,
-  Device    : device,
-  Conexao   : conexao,
-  Movimento : movimento,
-  Rede      : redeTag,
-  Placement : placementTag,
-  Source    : sourceTag,
-  Browser   : browserTag,
-  Hora      : horaTag,
-  // Novas variáveis:
-  Min_Dezena   : minDezena,
-  Min_Unidade  : minUnidade,
-  Seg_Metade   : segMetade,
-  Hora_Par     : horaPar,
-  DiaSemana    : diaSemana,
-  Dia_Par      : diaPar,
-  Periodo      : periodo,
-  B_Par        : bPar,
-  N_Par        : nPar,
-  FBP          : FBP,
-  FBC          : FBC
+  T          : tempoTag,
+  N          : velTag,
+  B          : batObj.bateria    || "B_absent",
+  C          : batObj.carregando || "C_absent",
+  Tema       : tema,
+  RAM        : ram,
+  V          : vib,
+  Device     : device,
+  Conexao    : conexao,
+  Movimento  : movimento,
+  Rede       : redeTag,
+  Placement  : placementTag,
+  Source     : sourceTag,
+  Browser    : browserTag,
+  Hora       : horaTag,
+  Age        : ageTag,
+  Gender     : genderTag,
+  State      : stateTag,
+  City       : cityTag,
+  Min_Dezena : minDezena,
+  Min_Unidade: minUnidade,
+  Seg_Metade : segMetade,
+  Hora_Par   : horaPar,
+  DiaSemana  : diaSemana,
+  Dia_Par    : diaPar,
+  Periodo    : periodo,
+  B_Par      : bPar,
+  N_Par      : nPar,
+  FBP        : FBP,
+  FBC        : FBC
 }
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
 // =========================================================
-// EVENTOS PERSONALIZADOS — TOP RANKING
+// REGRAS TOP — cole os resultados do analisador aqui
 // =========================================================
-
-// ─────────────────────────────────────────────────
-// TOP02 — 1 variável (cole as regras geradas pelo analisador)
-// ─────────────────────────────────────────────────
-const REGRAS_TOP02 = [
-  // Exemplo: { Browser: "EX" },
-]
-
-// ─────────────────────────────────────────────────
-// TOP03 — 2 variáveis
-// ─────────────────────────────────────────────────
-const REGRAS_TOP03 = [
-  // Exemplo: { N: "N8", B: "B4" },
-]
-
-// ─────────────────────────────────────────────────
-// TOP04 — 3 variáveis
-// ─────────────────────────────────────────────────
+const REGRAS_TOP02 = []
+const REGRAS_TOP03 = []
 const REGRAS_TOP04 = [
- 
+
 
   { Hora: "H12M2", DiaSemana: "Sexta", Paridade: "Ímpar" },
   { B: "B_absent", Hora: "H12M2", Paridade: "Ímpar" },
@@ -1698,49 +1617,40 @@ const REGRAS_TOP04 = [
 
 
 
+
 ]
-
-// ─────────────────────────────────────────────────
-// TOP05 — 4 variáveis
-// ─────────────────────────────────────────────────
 const REGRAS_TOP05 = []
-
-// ─────────────────────────────────────────────────
-// TOP06 — 5 variáveis
-// ─────────────────────────────────────────────────
 const REGRAS_TOP06 = []
 
-// ─────────────────────────────────────────────────
-// Função de match
-// ─────────────────────────────────────────────────
 const matchTop = (regras) => regras.some(regra =>
-  Object.entries(regra).every(([p, v]) => RUNTIME[p] === v)
+  Object.entries(regra).every(([p,v]) => RUNTIME[p] === v)
 )
-
 const bateuTop02 = matchTop(REGRAS_TOP02)
 const bateuTop03 = matchTop(REGRAS_TOP03)
 const bateuTop04 = matchTop(REGRAS_TOP04)
 const bateuTop05 = matchTop(REGRAS_TOP05)
 const bateuTop06 = matchTop(REGRAS_TOP06)
 
-if (bateuTop02) enviarEvento("TOP02")
-if (bateuTop03) enviarEvento("TOP03")
-if (bateuTop04) enviarEvento("TOP04")
-if (bateuTop05) enviarEvento("TOP05")
-if (bateuTop06) enviarEvento("TOP06")
+if(bateuTop02) enviarEvento("TOP02")
+if(bateuTop03) enviarEvento("TOP03")
+if(bateuTop04) enviarEvento("TOP04")
+if(bateuTop05) enviarEvento("TOP05")
+if(bateuTop06) enviarEvento("TOP06")
 
-// Tag resumida para o UC — pega o maior nível que bateu
-const topTag = bateuTop06 ? "F6"
-             : bateuTop05 ? "F5"
-             : bateuTop04 ? "F4"
-             : bateuTop03 ? "F3"
-             : bateuTop02 ? "F2"
-             : ""
+const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
 // MONTAGEM DO UC FINAL
+// ─────────────────────────────────────────────────────────
+// Ordem: [base][T][N][B][C][Tema][RAM][V][Device]
+//        [Conexao][Mov][Rede][Placement][Source]
+//        [Age][Gender][State][City]   ← NOVOS
+//        [topTag][ID]
+//
+// Limite: 48 chars totais
+// City (3) + State (2) + Age (2) + Gender (1-2) = 8-9 chars extras
 // =========================================================
-const idTag = "ID" + userId  // sempre 8+2 = 10 chars
+const idTag = "ID" + userId  // 10 chars fixos
 
 const corpoParts = [
   baseUC,
@@ -1756,70 +1666,77 @@ const corpoParts = [
   movimento,
   redeTag,
   placementTag,
-  sourceTag
+  sourceTag,
+  ageTag,    // A1-A6 ou A0
+  genderTag, // M, F ou G0
+  stateTag,  // SP, RJ, MG... ou ZZ
+  cityTag    // SAO, RIO, BEL... ou ZZZ
 ]
 
-const corpo = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
-
-const MAX          = 48
-const espacoCorpo  = MAX - idTag.length - topTag.length
-const corpoFinal   = corpo.slice(0, espacoCorpo)
-const finalUC      = corpoFinal + topTag + idTag
+const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
+const MAX         = 48
+const espacoCorpo = MAX - idTag.length - topTag.length
+const corpoFinal  = corpo.slice(0, espacoCorpo)
+const finalUC     = corpoFinal + topTag + idTag
 
 // =========================================================
-// SALVAR NO GOOGLE SHEETS (fire-and-forget)
+// DEBUG
+// =========================================================
+if(DEBUG){
+  alert(
+    "=== DEBUG UC v2 ===\n" +
+    "ageTag:    [" + ageTag    + "]\n" +
+    "genderTag: [" + genderTag + "]\n" +
+    "stateTag:  [" + stateTag  + "] (raw: " + stateRaw + ")\n" +
+    "cityTag:   [" + cityTag   + "] (raw: " + cityRaw  + ")\n" +
+    "horaTag:   [" + horaTag   + "]\n" +
+    "topTag:    [" + topTag    + "]\n" +
+    "corpo len: [" + corpo.length + "]\n" +
+    "finalUC:   [" + finalUC   + "] (" + finalUC.length + " chars)\n" +
+    "userId:    [" + userId    + "]"
+  )
+}
+
+// =========================================================
+// GOOGLE SHEETS
 // =========================================================
 try {
-  const fbc = getCookie("_fbc") || params.get("fbclid") || ""
-  const fbp = getCookie("_fbp") || ""
-
-  const agora = new Date()
-  const data_hora = agora.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
-
-  const payload = {
+  const agora     = new Date()
+  const data_hora = agora.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})
+  const payload   = {
     data_hora,
     external_id : userId,
-    fbc,
-    fbp,
+    fbc         : getCookie("_fbc") || params.get("fbclid") || "",
+    fbp         : getCookie("_fbp") || "",
     placement   : placementTag,
     source      : sourceTag,
-    device,
-    conexao,
+    device, conexao,
     rede        : redeTag,
     velocidade  : velTag,
+    age         : ageTag,
+    gender      : genderTag,
+    state       : stateTag,
+    city        : cityTag,
     uc_completo : finalUC,
-    // também envia as novas variáveis para debug
     min_dezena  : minDezena,
     min_unidade : minUnidade,
     seg_metade  : segMetade,
     hora_par    : horaPar,
     dia_semana  : diaSemana,
     dia_par     : diaPar,
-    periodo     : periodo,
-    b_par       : bPar,
-    n_par       : nPar,
+    periodo, b_par: bPar, n_par: nPar,
     fbp_flag    : FBP,
     fbc_flag    : FBC
   }
   if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
-
-  fetch(SHEETS_URL, {
-    method  : "POST",
-    mode    : "no-cors",
-    headers : { "Content-Type": "application/json" },
-    body    : JSON.stringify(payload)
-  }).catch(() => {})
-
-} catch(e) {}
+  fetch(SHEETS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{})
+} catch(e){}
 
 // =========================================================
 // REDIRECT
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
-
-setTimeout(() => {
-  window.location.href = url
-}, 400)
+setTimeout(() => { window.location.href = url }, 400)
 
 })();
 </script>
