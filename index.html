@@ -41,7 +41,7 @@ function enviarEvento(valor){
 <script>
 (async function(){
 
-const DEBUG = false
+const DEBUG = false   // ← mude para true se quiser ver o alerta
 
 const params = new URLSearchParams(window.location.search)
 
@@ -70,7 +70,7 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT + SOURCE (únicas macros reais do Meta)
+// PLACEMENT + SOURCE
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
@@ -105,70 +105,68 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// CARREGAMENTO DO JSON DE CIDADES (hospedado no GitHub)
+// JSON DE CIDADES
 // =========================================================
-// ⚠️ Substitua pela URL raw do seu arquivo cidades.json
-// URL corrigida (confirme se é essa mesmo)
-// URL corrigida (confirme se é essa mesmo)
 const CIDADES_JSON_URL = "https://raw.githubusercontent.com/luizalto/html14/main/cidades.json";
 let cidadesDict = {};
 
 async function carregarCidades() {
   try {
-    console.log("Carregando cidades de:", CIDADES_JSON_URL);
     const resp = await fetch(CIDADES_JSON_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     cidadesDict = await resp.json();
-    console.log("Cidades carregadas. Exemplo SP:", cidadesDict["SP"]?.slice(0,5));
-    // Cache local
     try { localStorage.setItem("cidadesDict", JSON.stringify(cidadesDict)); } catch(e){}
   } catch (e) {
-    console.error("Erro no fetch:", e);
+    console.error("Erro ao carregar JSON de cidades:", e);
     const cache = localStorage.getItem("cidadesDict");
     if (cache) {
       cidadesDict = JSON.parse(cache);
-      console.log("Usando cache local.");
     } else {
       cidadesDict = {};
     }
   }
 }
 
+// ⚠️ Retorna apenas o número (sem a sigla do estado)
 function getCityTag(state, cityFull) {
   const lista = cidadesDict[state];
-  if (!lista || !cityFull) {
-    console.warn(`Falha: state=${state}, cityFull=${cityFull}, lista=${!!lista}`);
-    return "ZZ0";
-  }
+  if (!lista || !cityFull) return "0";
+
   const nomeNorm = cityFull.normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
     .toUpperCase();
   const idx = lista.indexOf(nomeNorm);
-  if (idx === -1) {
-    console.warn(`Cidade não encontrada: "${nomeNorm}" em ${state}`);
-  }
-  return idx >= 0 ? state + (idx + 1) : "ZZ0";
+  return idx >= 0 ? String(idx + 1) : "0";
 }
 
 // =========================================================
-// ESTADO via IP — region_code da ipapi.co
+// GEOLOCALIZAÇÃO
 // =========================================================
-async function medirGeo(){
+async function medirGeo() {
   try {
-    const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(1500) })
-    if(!r.ok) throw new Error("geo fail")
-    const d = await r.json()
-    const rc    = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
-    const state = rc.length === 2 ? rc : "ZZ"
-    return { state, city_full: d.city || "", state_full: d.region || "" }
-  } catch {
-    return { state: "ZZ", city_full: "", state_full: "" }
+    const r = await fetch("https://ipapi.co/json/");
+    if (!r.ok) throw new Error("geo falhou");
+    const d = await r.json();
+    const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+    const state = rc.length === 2 ? rc : "ZZ";
+    return { state, city_full: d.city || "", state_full: d.region || "" };
+  } catch (e) {
+    return { state: "ZZ", city_full: "", state_full: "" };
   }
 }
 
 // =========================================================
-// DEMAIS SENSORES (mantidos como no original)
+// CARREGA CIDADES E GEO
+// =========================================================
+await carregarCidades();
+const geo = await timeout(medirGeo(), 1500, { state:"ZZ", city_full:"", state_full:"" });
+
+const stateTag = geo.state;
+const cityTag = getCityTag(stateTag, geo.city_full);
+
+// =========================================================
+// DEMAIS SENSORES
 // =========================================================
 const HP_PADRAO = 20
 const hp = HP_PADRAO
@@ -251,20 +249,6 @@ function getCookie(name){
   return m ? m[2] : ""
 }
 
-// =========================================================
-// EXECUÇÃO PARALELA (carrega cidades e geo primeiro)
-// =========================================================
-const [_, geo] = await Promise.all([
-  carregarCidades(),
-  timeout(medirGeo(), 1500, { state:"ZZ", city_full:"", state_full:"" })
-]);
-
-const stateTag = geo.state;
-const cityTag = getCityTag(stateTag, geo.city_full);
-
-// =========================================================
-// DEMAIS COLETAS PARALELAS
-// =========================================================
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
@@ -382,7 +366,7 @@ const RUNTIME = {
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
 // =========================================================
-// REGRAS TOP (vazias por enquanto)
+// REGRAS TOP (incluindo as suas regras TOP04)
 // =========================================================
 const REGRAS_TOP02 = []
 const REGRAS_TOP03 = []
@@ -1591,6 +1575,8 @@ const REGRAS_TOP04 = [
   { B: "B10", DiaSemana: "Quarta", Seg_Metade: "Seg_00_30" },
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
+
+
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1632,7 +1618,7 @@ const corpoParts = [
   placementTag,
   sourceTag,
   stateTag,
-  cityTag
+  cityTag             // agora cityTag é só o número (ex.: "56")
 ]
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
 const MAX         = 48
@@ -1640,26 +1626,17 @@ const espacoCorpo = MAX - idTag.length - topTag.length
 const corpoFinal  = corpo.slice(0, espacoCorpo)
 const finalUC     = corpoFinal + topTag + idTag
 
-// =========================================================
-// DEBUG
-// =========================================================
 if(DEBUG){
   alert(
-    "=== DEBUG UC v4 ===\n" +
-    "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
-    "cityTag:    [" + cityTag       + "] (" + geo.city_full  + ")\n" +
-    "placement:  [" + placementTag  + "]\n" +
-    "source:     [" + sourceTag     + "]\n" +
-    "horaTag:    [" + horaTag       + "]\n" +
-    "topTag:     [" + topTag        + "]\n" +
-    "corpo len:  [" + corpo.length  + "]\n" +
-    "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
-    "userId:     [" + userId        + "]"
+    "=== DEBUG ===\n" +
+    "stateTag: " + stateTag + "\n" +
+    "cityTag:  " + cityTag + "\n" +
+    "finalUC:  " + finalUC
   )
 }
 
 // =========================================================
-// GOOGLE SHEETS – fire-and-forget
+// GOOGLE SHEETS
 // =========================================================
 try {
   const agora     = new Date()
