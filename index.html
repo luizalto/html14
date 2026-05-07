@@ -70,7 +70,7 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT + SOURCE
+// PLACEMENT + SOURCE (únicas macros reais do Meta)
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
@@ -105,79 +105,45 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// TAG DE CIDADE: estado + 5 primeiras letras (sem acentos)
-// Exemplo: SP + SAOPA = SPSAOPA
+// ESTADO via IP — region_code da ipapi.co
+// Retorna sigla BR de 2 letras. Ex: SP, RJ, SC...
+// Fallback: ZZ se não conseguir
 // =========================================================
-function getCityTag(state, cityFull) {
-  if (!state || state === "ZZ" || !cityFull) return "ZZ0";
-  const nomeNorm = cityFull.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z]/g, "")
-    .toUpperCase();
-  if (!nomeNorm) return "ZZ0";
-  return state + nomeNorm.slice(0, 6);
-}
-
-// =========================================================
-// GEOLOCALIZAÇÃO resiliente (com cache e atualização em bg)
-// =========================================================
-async function medirGeo() {
-  const cache = localStorage.getItem("geoData");
-  if (cache) {
-    const geo = JSON.parse(cache);
-    atualizarGeoEmBackground();
-    return geo;
-  }
-  return await buscarGeoComTimeout();
-}
-
-async function buscarGeoComTimeout() {
+async function medirGeo(){
   try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 3000);
-    const r = await fetch("https://ipapi.co/json/", { signal: controller.signal });
-    clearTimeout(id);
-    if (!r.ok) throw new Error("geo fail");
-    const d = await r.json();
-    const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase();
-    const geo = {
-      state: rc.length === 2 ? rc : "ZZ",
-      city_full: d.city || "",
-      state_full: d.region || ""
-    };
-    localStorage.setItem("geoData", JSON.stringify(geo));
-    return geo;
-  } catch (e) {
-    return { state: "ZZ", city_full: "", state_full: "" };
+    const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(1500) })
+    if(!r.ok) throw new Error("geo fail")
+    const d = await r.json()
+
+    // Estado: region_code já vem como "SP", "RJ", etc.
+    const rc    = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
+    const state = rc.length === 2 ? rc : "ZZ"
+
+    // Cidade: 2 primeiras letras sem acento
+    const cityRaw = (d.city || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z]/g, "")
+      .toUpperCase()
+    const city = cityRaw.slice(0, 6) || "ZZ"
+
+    return { state, city, city_full: d.city || "", state_full: d.region || "" }
+  } catch {
+    return { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
   }
 }
 
-async function atualizarGeoEmBackground() {
-  try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 2000);
-    const r = await fetch("https://ipapi.co/json/", { signal: controller.signal });
-    clearTimeout(id);
-    if (r.ok) {
-      const d = await r.json();
-      const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase();
-      const geo = {
-        state: rc.length === 2 ? rc : "ZZ",
-        city_full: d.city || "",
-        state_full: d.region || ""
-      };
-      localStorage.setItem("geoData", JSON.stringify(geo));
-    }
-  } catch (e) {}
-}
-
 // =========================================================
-// SENSORES (sem T1, sem V)
+// DIVISÃO DA HORA
 // =========================================================
 const HP_PADRAO = 20
 const hp = HP_PADRAO
-const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
 
+const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
+const tempoTag = "T1"
+
+// =========================================================
+// VELOCIDADE
+// =========================================================
 function classificarVel(mbps){
   if(mbps <= 0.5) return 1
   if(mbps <= 1)   return 3
@@ -191,6 +157,9 @@ async function medirVelocidade(){
   catch { return "N6" }
 }
 
+// =========================================================
+// BATERIA
+// =========================================================
 async function medirBateria(){
   try {
     const bat = await navigator.getBattery()
@@ -199,6 +168,9 @@ async function medirBateria(){
   } catch { return { bateria: "", carregando: "" } }
 }
 
+// =========================================================
+// MOVIMENTO
+// =========================================================
 function medirMovimento(){
   return new Promise(resolve => {
     let det = false
@@ -214,6 +186,9 @@ function medirMovimento(){
   })
 }
 
+// =========================================================
+// RAM
+// =========================================================
 function medirRAM(){
   const ram = navigator.deviceMemory || 4
   if(ram <= 2) return "R1"
@@ -222,6 +197,9 @@ function medirRAM(){
   return "R4"
 }
 
+// =========================================================
+// WEBRTC
+// =========================================================
 function medirWebRTC(){
   return new Promise(resolve => {
     try {
@@ -255,28 +233,12 @@ function getCookie(name){
 }
 
 // =========================================================
-// EXECUÇÃO PRINCIPAL
+// SINCRONO
 // =========================================================
-const [geo, velTag, batObj, movimento, redeTag] = await Promise.all([
-  medirGeo(),
-  timeout(medirVelocidade(), 200, "N6"),
-  timeout(medirBateria(),    200, { bateria:"", carregando:"" }),
-  timeout(medirMovimento(),  200, "M0"),
-  timeout(medirWebRTC(),     850, "RU")
-]);
-
-const stateTag = geo.state;
-const cityTag = getCityTag(stateTag, geo.city_full);
-const ram      = medirRAM();
-
-// Dados que não dependem de rede
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-
-// ❌ Removido: const vib = ...
-// ❌ Removido: tempoTag = "T1"
-
+const vib    = navigator.vibrate ? "V1" : "V0"
 const conexao = (() => {
   const c = navigator.connection
   if(!c) return "U"
@@ -285,6 +247,25 @@ const conexao = (() => {
   return "U"
 })()
 
+// =========================================================
+// PARALELO — inclui geo junto com os outros sensores
+// =========================================================
+const [velTag, batObj, movimento, redeTag, geo] = await Promise.all([
+  timeout(medirVelocidade(), 200,  "N6"),
+  timeout(medirBateria(),    200,  { bateria:"", carregando:"" }),
+  timeout(medirMovimento(),  200,  "M0"),
+  timeout(medirWebRTC(),     950,  "RU"),
+  timeout(medirGeo(),        1500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" })
+])
+const ram = medirRAM()
+
+// Estado e cidade via IP
+const stateTag = geo.state  // ex: SP, RJ, SC, ZZ
+const cityTag  = geo.city   // ex: SA, RI, BE, ZZ (2 chars)
+
+// =========================================================
+// TEMPORAIS
+// =========================================================
 let paridadeTag = null
 if(ENABLE_PARIDADE){
   const agora = new Date()
@@ -327,13 +308,13 @@ if(hp===1){
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// EVENTOS META (sem V, sem T1)
+// EVENTOS META — dispara sinais individuais
 // =========================================================
 const eventosBasicos = [
-  velTag, batObj.bateria, batObj.carregando,
-  tema, ram, device, conexao, movimento, redeTag,
+  tempoTag, velTag, batObj.bateria, batObj.carregando,
+  tema, ram, vib, device, conexao, movimento, redeTag,
   placementTag, sourceTag,
-  stateTag, cityTag,
+  stateTag, cityTag,          // estado e cidade via IP
   minDezena, minUnidade, segMetade, horaPar,
   diaSemana, diaPar, periodo,
   (bPar!==null?bPar:""), (nPar!==null?nPar:""),
@@ -344,14 +325,16 @@ eventosBasicos.forEach(enviarEvento)
 enviarEvento(horaTag)
 
 // =========================================================
-// REGRAS TOP (vazias, sem TOP04)
+// RUNTIME MAP — todas as variáveis para as regras TOP
 // =========================================================
 const RUNTIME = {
+  T          : tempoTag,
   N          : velTag,
   B          : batObj.bateria    || "B_absent",
   C          : batObj.carregando || "C_absent",
   Tema       : tema,
   RAM        : ram,
+  V          : vib,
   Device     : device,
   Conexao    : conexao,
   Movimento  : movimento,
@@ -376,10 +359,12 @@ const RUNTIME = {
 }
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
+// =========================================================
+// REGRAS TOP — cole os resultados do analisador aqui
+// =========================================================
 const REGRAS_TOP02 = []
 const REGRAS_TOP03 = []
 const REGRAS_TOP04 = [
-
 
   { Hora: "H12M2", DiaSemana: "Sexta", Paridade: "Ímpar" },
   { B: "B_absent", Hora: "H12M2", Paridade: "Ímpar" },
@@ -1585,7 +1570,6 @@ const REGRAS_TOP04 = [
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
 
-
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1608,26 +1592,37 @@ if(bateuTop06) enviarEvento("TOP06")
 const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
-// MONTAGEM DO UC (50 caracteres, sem T1, sem V)
+// MONTAGEM DO UC FINAL
+// ─────────────────────────────────────────────────────────
+// Estrutura:
+// [baseUC][T][N][B][C][Tema][RAM][V][Device][Conexao]
+// [Mov][Rede][Placement][Source][State][City][topTag][ID]
+//
+// State = 2 chars (SP, RJ, ZZ...)
+// City  = 2 chars (SA, RI, ZZ...)
+// Total máx: 48 chars
 // =========================================================
-const idTag = "ID" + userId
+const idTag = "ID" + userId  // 10 chars fixos
+
 const corpoParts = [
   baseUC,
+  tempoTag,
   velTag,
   batObj.bateria,
   batObj.carregando,
   tema,
   ram,
-  // ❌ vib removido
+  vib,
   device,
   conexao,
   movimento,
   redeTag,
   placementTag,
   sourceTag,
-  stateTag,
-  cityTag
+  stateTag,   // SP, RJ, SC... ou ZZ  (via IP)
+  cityTag     // SA, RI, BE... ou ZZ  (via IP, 2 chars)
 ]
+
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
 const MAX         = 50
 const espacoCorpo = MAX - idTag.length - topTag.length
@@ -1639,14 +1634,21 @@ const finalUC     = corpoFinal + topTag + idTag
 // =========================================================
 if(DEBUG){
   alert(
-    "stateTag: " + stateTag + "\n" +
-    "cityTag:  " + cityTag + "\n" +
-    "finalUC:  " + finalUC
+    "=== DEBUG UC v3 ===\n" +
+    "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
+    "cityTag:    [" + cityTag       + "] (" + geo.city_full  + ")\n" +
+    "placement:  [" + placementTag  + "]\n" +
+    "source:     [" + sourceTag     + "]\n" +
+    "horaTag:    [" + horaTag       + "]\n" +
+    "topTag:     [" + topTag        + "]\n" +
+    "corpo len:  [" + corpo.length  + "]\n" +
+    "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
+    "userId:     [" + userId        + "]"
   )
 }
 
 // =========================================================
-// GOOGLE SHEETS (sendBeacon)
+// GOOGLE SHEETS — fire-and-forget
 // =========================================================
 try {
   const agora     = new Date()
@@ -1680,16 +1682,19 @@ try {
     fbc_flag    : FBC
   }
   if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
-
-  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-  navigator.sendBeacon(SHEETS_URL, blob);
+  fetch(SHEETS_URL, {
+    method  : "POST",
+    mode    : "no-cors",
+    headers : { "Content-Type": "application/json" },
+    body    : JSON.stringify(payload)
+  }).catch(()=>{})
 } catch(e){}
 
 // =========================================================
 // REDIRECT
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
-window.location.href = url;
+setTimeout(() => { window.location.href = url }, 400)
 
 })();
 </script>
