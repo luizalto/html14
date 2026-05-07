@@ -70,83 +70,7 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// IDADE — macro {{age}} do Meta
-// Tags: A1=18-24 · A2=25-34 · A3=35-44 · A4=45-54 · A5=55-64 · A6=65+ · A0=sem dado
-// =========================================================
-function classAge(raw){
-  if(!raw || raw.includes("{{")) return "A0"
-  const s = raw.trim()
-  if(s.startsWith("18")) return "A1"
-  if(s.startsWith("25")) return "A2"
-  if(s.startsWith("35")) return "A3"
-  if(s.startsWith("45")) return "A4"
-  if(s.startsWith("55")) return "A5"
-  if(s.startsWith("65")) return "A6"
-  return "A0"
-}
-const ageTag = classAge(params.get("age") || "")
-
-// =========================================================
-// GÊNERO — macro {{gender}} do Meta
-// Tags: M=masculino · F=feminino · G0=sem dado
-// =========================================================
-function classGender(raw){
-  if(!raw || raw.includes("{{")) return "G0"
-  const s = raw.trim().toLowerCase()
-  if(s === "male")   return "M"
-  if(s === "female") return "F"
-  return "G0"
-}
-const genderTag = classGender(params.get("gender") || "")
-
-// =========================================================
-// ESTADO — macro {{region}} do Meta
-// Retorna sigla BR de 2 letras. Ex: SP, RJ, MG...
-// Se não reconhecer, pega as 2 primeiras letras do nome.
-// =========================================================
-function classState(raw){
-  if(!raw || raw.includes("{{")) return "ZZ"  // sem dado
-  const s = raw.trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
-    .toLowerCase()
-
-  const map = {
-    "acre":"AC","alagoas":"AL","amapa":"AP","amazonas":"AM",
-    "bahia":"BA","ceara":"CE","distrito federal":"DF","espirito santo":"ES",
-    "goias":"GO","maranhao":"MA","mato grosso do sul":"MS","mato grosso":"MT",
-    "minas gerais":"MG","para":"PA","paraiba":"PB","parana":"PR",
-    "pernambuco":"PE","piaui":"PI","rio de janeiro":"RJ",
-    "rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO",
-    "roraima":"RR","santa catarina":"SC","sao paulo":"SP",
-    "sergipe":"SE","tocantins":"TO"
-  }
-  if(map[s]) return map[s]
-
-  // Fallback: 2 primeiras letras uppercase sem acento
-  const clean = s.replace(/[^a-z]/g, "")
-  return clean.slice(0, 2).toUpperCase() || "ZZ"
-}
-const stateRaw = params.get("state") || ""
-const stateTag = classState(stateRaw)  // sempre 2 chars
-
-// =========================================================
-// CIDADE — macro {{city}} do Meta
-// Pega as 2 primeiras letras da cidade em uppercase, sem acento.
-// Ex: "São Paulo" → "SA" · "Rio de Janeiro" → "RI" · sem dado → "ZZ"
-// =========================================================
-function classCity(raw){
-  if(!raw || raw.includes("{{")) return "ZZ"
-  const clean = raw.trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z]/g, "")
-    .toUpperCase()
-  return clean.slice(0, 2) || "ZZ"
-}
-const cityRaw = params.get("city") || ""
-const cityTag = classCity(cityRaw)   // sempre 2 chars
-
-// =========================================================
-// PLACEMENT + SOURCE
+// PLACEMENT + SOURCE (únicas macros reais do Meta)
 // =========================================================
 const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
 const srcRaw = (params.get("src") || "").toLowerCase().trim()
@@ -179,6 +103,34 @@ function classSrc(s){
 }
 const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
+
+// =========================================================
+// ESTADO via IP — region_code da ipapi.co
+// Retorna sigla BR de 2 letras. Ex: SP, RJ, SC...
+// Fallback: ZZ se não conseguir
+// =========================================================
+async function medirGeo(){
+  try {
+    const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(1500) })
+    if(!r.ok) throw new Error("geo fail")
+    const d = await r.json()
+
+    // Estado: region_code já vem como "SP", "RJ", etc.
+    const rc    = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
+    const state = rc.length === 2 ? rc : "ZZ"
+
+    // Cidade: 2 primeiras letras sem acento
+    const cityRaw = (d.city || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z]/g, "")
+      .toUpperCase()
+    const city = cityRaw.slice(0, 2) || "ZZ"
+
+    return { state, city, city_full: d.city || "", state_full: d.region || "" }
+  } catch {
+    return { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+  }
+}
 
 // =========================================================
 // DIVISÃO DA HORA
@@ -296,15 +248,20 @@ const conexao = (() => {
 })()
 
 // =========================================================
-// PARALELO
+// PARALELO — inclui geo junto com os outros sensores
 // =========================================================
-const [velTag, batObj, movimento, redeTag] = await Promise.all([
-  timeout(medirVelocidade(), 200, "N6"),
-  timeout(medirBateria(),    200, { bateria:"", carregando:"" }),
-  timeout(medirMovimento(),  200, "M0"),
-  timeout(medirWebRTC(),     950, "RU")
+const [velTag, batObj, movimento, redeTag, geo] = await Promise.all([
+  timeout(medirVelocidade(), 200,  "N6"),
+  timeout(medirBateria(),    200,  { bateria:"", carregando:"" }),
+  timeout(medirMovimento(),  200,  "M0"),
+  timeout(medirWebRTC(),     950,  "RU"),
+  timeout(medirGeo(),        1500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" })
 ])
 const ram = medirRAM()
+
+// Estado e cidade via IP
+const stateTag = geo.state  // ex: SP, RJ, SC, ZZ
+const cityTag  = geo.city   // ex: SA, RI, BE, ZZ (2 chars)
 
 // =========================================================
 // TEMPORAIS
@@ -351,13 +308,13 @@ if(hp===1){
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// EVENTOS META
+// EVENTOS META — dispara sinais individuais
 // =========================================================
 const eventosBasicos = [
   tempoTag, velTag, batObj.bateria, batObj.carregando,
   tema, ram, vib, device, conexao, movimento, redeTag,
   placementTag, sourceTag,
-  ageTag, genderTag, stateTag, cityTag,
+  stateTag, cityTag,          // estado e cidade via IP
   minDezena, minUnidade, segMetade, horaPar,
   diaSemana, diaPar, periodo,
   (bPar!==null?bPar:""), (nPar!==null?nPar:""),
@@ -386,8 +343,6 @@ const RUNTIME = {
   Source     : sourceTag,
   Browser    : browserTag,
   Hora       : horaTag,
-  Age        : ageTag,
-  Gender     : genderTag,
   State      : stateTag,
   City       : cityTag,
   Min_Dezena : minDezena,
@@ -1615,7 +1570,6 @@ const REGRAS_TOP04 = [
   { N: "N6", Hora: "H22M4", DiaSemana: "Quarta" },
 
 
-
 ]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
@@ -1640,13 +1594,13 @@ const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":b
 // =========================================================
 // MONTAGEM DO UC FINAL
 // ─────────────────────────────────────────────────────────
-// Ordem: [base][T][N][B][C][Tema][RAM][V][Device]
-//        [Conexao][Mov][Rede][Placement][Source]
-//        [Age][Gender][State][City]   ← NOVOS
-//        [topTag][ID]
+// Estrutura:
+// [baseUC][T][N][B][C][Tema][RAM][V][Device][Conexao]
+// [Mov][Rede][Placement][Source][State][City][topTag][ID]
 //
-// Limite: 48 chars totais
-// City (3) + State (2) + Age (2) + Gender (1-2) = 8-9 chars extras
+// State = 2 chars (SP, RJ, ZZ...)
+// City  = 2 chars (SA, RI, ZZ...)
+// Total máx: 48 chars
 // =========================================================
 const idTag = "ID" + userId  // 10 chars fixos
 
@@ -1665,10 +1619,8 @@ const corpoParts = [
   redeTag,
   placementTag,
   sourceTag,
-  ageTag,    // A1-A6 ou A0
-  genderTag, // M, F ou G0
-  stateTag,  // SP, RJ, MG... ou ZZ
-  cityTag    // SAO, RIO, BEL... ou ZZZ
+  stateTag,   // SP, RJ, SC... ou ZZ  (via IP)
+  cityTag     // SA, RI, BE... ou ZZ  (via IP, 2 chars)
 ]
 
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
@@ -1682,21 +1634,21 @@ const finalUC     = corpoFinal + topTag + idTag
 // =========================================================
 if(DEBUG){
   alert(
-    "=== DEBUG UC v2 ===\n" +
-    "ageTag:    [" + ageTag    + "]\n" +
-    "genderTag: [" + genderTag + "]\n" +
-    "stateTag:  [" + stateTag  + "] (raw: " + stateRaw + ")\n" +
-    "cityTag:   [" + cityTag   + "] (raw: " + cityRaw  + ")\n" +
-    "horaTag:   [" + horaTag   + "]\n" +
-    "topTag:    [" + topTag    + "]\n" +
-    "corpo len: [" + corpo.length + "]\n" +
-    "finalUC:   [" + finalUC   + "] (" + finalUC.length + " chars)\n" +
-    "userId:    [" + userId    + "]"
+    "=== DEBUG UC v3 ===\n" +
+    "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
+    "cityTag:    [" + cityTag       + "] (" + geo.city_full  + ")\n" +
+    "placement:  [" + placementTag  + "]\n" +
+    "source:     [" + sourceTag     + "]\n" +
+    "horaTag:    [" + horaTag       + "]\n" +
+    "topTag:     [" + topTag        + "]\n" +
+    "corpo len:  [" + corpo.length  + "]\n" +
+    "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
+    "userId:     [" + userId        + "]"
   )
 }
 
 // =========================================================
-// GOOGLE SHEETS
+// GOOGLE SHEETS — fire-and-forget
 // =========================================================
 try {
   const agora     = new Date()
@@ -1708,13 +1660,14 @@ try {
     fbp         : getCookie("_fbp") || "",
     placement   : placementTag,
     source      : sourceTag,
-    device, conexao,
+    device,
+    conexao,
     rede        : redeTag,
     velocidade  : velTag,
-    age         : ageTag,
-    gender      : genderTag,
     state       : stateTag,
+    state_full  : geo.state_full,
     city        : cityTag,
+    city_full   : geo.city_full,
     uc_completo : finalUC,
     min_dezena  : minDezena,
     min_unidade : minUnidade,
@@ -1722,12 +1675,19 @@ try {
     hora_par    : horaPar,
     dia_semana  : diaSemana,
     dia_par     : diaPar,
-    periodo, b_par: bPar, n_par: nPar,
+    periodo,
+    b_par       : bPar,
+    n_par       : nPar,
     fbp_flag    : FBP,
     fbc_flag    : FBC
   }
   if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
-  fetch(SHEETS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{})
+  fetch(SHEETS_URL, {
+    method  : "POST",
+    mode    : "no-cors",
+    headers : { "Content-Type": "application/json" },
+    body    : JSON.stringify(payload)
+  }).catch(()=>{})
 } catch(e){}
 
 // =========================================================
