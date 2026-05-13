@@ -2,30 +2,6 @@
 <html lang="pt-br">
 <head>
 <script>
-// ========== CONFIGURAÇÕES INICIAIS ==========
-// Altere para true/false conforme sua necessidade
-const CONFIG = {
-  // Medições
-  medirGeo: true,           // Geolocalização por IP (pode ser lenta)
-  medirVelocidade: false,    // Velocidade da rede (navigator.connection)
-  medirBateria: true,       // Nível de bateria e carregamento
-  medirMovimento: false,     // Acelerômetro
-  medirWebRTC: false,        // IP local via WebRTC
-  medirRAM: false,           // Memória RAM (deviceMemory)
-
-  // Envios
-  enviarEventosMeta: true,  // Dispara eventos customizados no Facebook Pixel
-  enviarGoogleSheets: true, // Envia dados para a planilha
-
-  // Coletas leves (sempre ativas, pois não impactam performance)
-  coletarPlacementSource: true,
-  coletarTemporais: true,
-  
-  // Debug (alert com informações)
-  debug: false
-};
-
-// ========== FACEBOOK PIXEL ==========
 !function(f,b,e,v,n,t,s){
 if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -48,11 +24,10 @@ function getUserId(){
 }
 const userId = getUserId()
 
-fbq('init', '977141014678498', { external_id: userId })
+fbq('init', '799819532599997', { external_id: userId })
 fbq('track', 'PageView', { external_id: userId })
 
 function enviarEvento(valor){
-  if(!CONFIG.enviarEventosMeta) return
   if(!valor) return
   const nome = valor.replace(/[^a-zA-Z0-9]/g, "")
   if(!nome) return
@@ -65,6 +40,8 @@ function enviarEvento(valor){
 <body>
 <script>
 (async function(){
+
+const DEBUG = false
 
 const params = new URLSearchParams(window.location.search)
 
@@ -93,53 +70,49 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT + SOURCE (sempre ativo, leve)
+// PLACEMENT + SOURCE
 // =========================================================
-let placementTag = "PU", sourceTag = "SU"
-if(CONFIG.coletarPlacementSource){
-  const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
-  const srcRaw = (params.get("src") || "").toLowerCase().trim()
+const plRaw  = (params.get("pl")  || "").toLowerCase().trim()
+const srcRaw = (params.get("src") || "").toLowerCase().trim()
 
-  function classPlacement(p){
-    if(!p || p.includes("{{")) return "PU"
-    const n = p.replace(/[_\s-]/g, "")
-    if(n.includes("profilereels"))  return "PP"
-    if(n.includes("reelsoverlay"))  return "PV"
-    if(n.includes("reels"))         return "PR"
-    if(n.includes("stories"))       return "PS"
-    if(n.includes("explorehome"))   return "PH"
-    if(n.includes("explore"))       return "PE"
-    if(n.includes("search"))        return "PQ"
-    if(n.includes("marketplace"))   return "PM"
-    if(n.includes("instream"))      return "PI"
-    if(n.includes("video"))         return "PI"
-    if(n.includes("messenger"))     return "PG"
-    if(n.includes("audience"))      return "PA"
-    if(n.includes("feed"))          return "PF"
-    return "PO"
-  }
-  function classSrc(s){
-    if(!s || s.includes("{{")) return "SU"
-    if(s === "ig")  return "SI"
-    if(s === "fb")  return "SF"
-    if(s === "msg") return "SM"
-    if(s === "an")  return "SA"
-    return "SU"
-  }
-  placementTag = classPlacement(plRaw)
-  sourceTag    = classSrc(srcRaw)
+function classPlacement(p){
+  if(!p || p.includes("{{")) return "PU"
+  const n = p.replace(/[_\s-]/g, "")
+  if(n.includes("profilereels"))  return "PP"
+  if(n.includes("reelsoverlay"))  return "PV"
+  if(n.includes("reels"))         return "PR"
+  if(n.includes("stories"))       return "PS"
+  if(n.includes("explorehome"))   return "PH"
+  if(n.includes("explore"))       return "PE"
+  if(n.includes("search"))        return "PQ"
+  if(n.includes("marketplace"))   return "PM"
+  if(n.includes("instream"))      return "PI"
+  if(n.includes("video"))         return "PI"
+  if(n.includes("messenger"))     return "PG"
+  if(n.includes("audience"))      return "PA"
+  if(n.includes("feed"))          return "PF"
+  return "PO"
 }
+function classSrc(s){
+  if(!s || s.includes("{{")) return "SU"
+  if(s === "ig")  return "SI"
+  if(s === "fb")  return "SF"
+  if(s === "msg") return "SM"
+  if(s === "an")  return "SA"
+  return "SU"
+}
+const placementTag = classPlacement(plRaw)
+const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// FUNÇÕES DE MEDIÇÃO (condicionadas pelo CONFIG)
+// GEOLOCALIZAÇÃO MULTI-FONTE + CACHE
 // =========================================================
-
-// ----- GEOLOCALIZAÇÃO (com cache) -----
 async function fetchGeoFromAPI(url) {
   const resp = await fetch(url, { signal: AbortSignal.timeout(2000) })
   if (!resp.ok) throw new Error("bad response")
   return resp.json()
 }
+
 function extrairGeo(d) {
   const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
   const state = rc.length === 2 ? rc : "ZZ"
@@ -150,41 +123,73 @@ function extrairGeo(d) {
   const city = cityRaw.slice(0, 6) || "ZZ"
   return { state, city, city_full: d.city || "", state_full: d.region || "" }
 }
+
 const GEO_CACHE_KEY = "geo_cache"
-const GEO_CACHE_TTL = 30 * 60 * 1000
+const GEO_CACHE_TTL = 30 * 60 * 1000 // 30 minutos
+
 async function medirGeo() {
-  if(!CONFIG.medirGeo) return { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+  // 1. Tentar cache válido
   try {
     const cached = JSON.parse(sessionStorage.getItem(GEO_CACHE_KEY))
-    if (cached && cached.expires > Date.now()) return cached.data
+    if (cached && cached.expires > Date.now()) {
+      return cached.data
+    }
   } catch {}
+
+  // 2. Lista de APIs em ordem de preferência
   const apis = [
     () => fetchGeoFromAPI("https://ipapi.co/json/"),
     () => fetchGeoFromAPI("https://ipwho.is/"),
     () => fetchGeoFromAPI("https://freeipapi.com/api/json")
   ]
+
   let data = null
   for (const apiFn of apis) {
     try {
       const json = await apiFn()
       data = extrairGeo(json)
-      if (data.state !== "ZZ" || data.city !== "ZZ") break
+      if (data.state !== "ZZ" || data.city !== "ZZ") break // sucesso
     } catch {}
   }
+
+  // 3. Se todas falharam, tenta reutilizar cache expirado
   if (!data) {
     try {
       const cached = JSON.parse(sessionStorage.getItem(GEO_CACHE_KEY))
-      if (cached && cached.data) data = cached.data
+      if (cached && cached.data) {
+        data = cached.data
+      }
     } catch {}
   }
-  if (!data) data = { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+
+  // 4. Fallback final
+  if (!data) {
+    data = { state: "ZZ", city: "ZZ", city_full: "", state_full: "" }
+  }
+
+  // 5. Atualiza cache (mesmo que seja ZZ, para evitar requisições repetidas imediatas)
   try {
-    sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify({ data, expires: Date.now() + GEO_CACHE_TTL }))
+    sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify({
+      data,
+      expires: Date.now() + GEO_CACHE_TTL
+    }))
   } catch {}
+
   return data
 }
 
-// ----- VELOCIDADE -----
+// =========================================================
+// DIVISÃO DA HORA (mantida para eventos, mas NÃO na UC)
+// =========================================================
+const HP_PADRAO = 20
+const hp = HP_PADRAO
+
+const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
+const tempoTag = "T1"   // só usado nos eventos, não na UC
+
+// =========================================================
+// VELOCIDADE
+// =========================================================
 function classificarVel(mbps){
   if(mbps <= 0.5) return 1
   if(mbps <= 1)   return 3
@@ -194,14 +199,14 @@ function classificarVel(mbps){
   return 14
 }
 async function medirVelocidade(){
-  if(!CONFIG.medirVelocidade) return "N6"
   try { return "N" + classificarVel(navigator.connection?.downlink || 5) }
   catch { return "N6" }
 }
 
-// ----- BATERIA -----
+// =========================================================
+// BATERIA
+// =========================================================
 async function medirBateria(){
-  if(!CONFIG.medirBateria) return { bateria: "", carregando: "" }
   try {
     const bat = await navigator.getBattery()
     const pct  = Math.round(bat.level * 10)
@@ -209,9 +214,10 @@ async function medirBateria(){
   } catch { return { bateria: "", carregando: "" } }
 }
 
-// ----- MOVIMENTO -----
+// =========================================================
+// MOVIMENTO
+// =========================================================
 function medirMovimento(){
-  if(!CONFIG.medirMovimento) return Promise.resolve("M0")
   return new Promise(resolve => {
     let det = false
     function h(e){
@@ -226,9 +232,10 @@ function medirMovimento(){
   })
 }
 
-// ----- RAM -----
+// =========================================================
+// RAM
+// =========================================================
 function medirRAM(){
-  if(!CONFIG.medirRAM) return "R2"
   const ram = navigator.deviceMemory || 4
   if(ram <= 2) return "R1"
   if(ram <= 4) return "R2"
@@ -236,9 +243,10 @@ function medirRAM(){
   return "R4"
 }
 
-// ----- WEBRTC -----
+// =========================================================
+// WEBRTC
+// =========================================================
 function medirWebRTC(){
-  if(!CONFIG.medirWebRTC) return Promise.resolve("RU")
   return new Promise(resolve => {
     try {
       const pc = new RTCPeerConnection({ iceServers: [] })
@@ -271,12 +279,12 @@ function getCookie(name){
 }
 
 // =========================================================
-// DADOS SINCRONOS (sempre capturados, são leves)
+// SINCRONO
 // =========================================================
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
 const device = /android/i.test(ua) ? "A" : /iphone|ipad|ipod/i.test(ua) ? "I" : "O"
-const vib    = navigator.vibrate ? "V1" : "V0"
+const vib    = navigator.vibrate ? "V1" : "V0"   // usado nos eventos, não na UC
 const conexao = (() => {
   const c = navigator.connection
   if(!c) return "U"
@@ -286,28 +294,23 @@ const conexao = (() => {
 })()
 
 // =========================================================
-// MEDIÇÕES PARALELAS (somente as ativas no CONFIG)
+// PARALELO — inclui geo com os outros sensores
 // =========================================================
-const promisesArray = []
-if(CONFIG.medirVelocidade) promisesArray.push(timeout(medirVelocidade(), 200, "N6"))
-else promisesArray.push(Promise.resolve("N6"))
-if(CONFIG.medirBateria) promisesArray.push(timeout(medirBateria(), 200, { bateria:"", carregando:"" }))
-else promisesArray.push(Promise.resolve({ bateria:"", carregando:"" }))
-if(CONFIG.medirMovimento) promisesArray.push(timeout(medirMovimento(), 200, "M0"))
-else promisesArray.push(Promise.resolve("M0"))
-if(CONFIG.medirWebRTC) promisesArray.push(timeout(medirWebRTC(), 950, "RU"))
-else promisesArray.push(Promise.resolve("RU"))
-if(CONFIG.medirGeo) promisesArray.push(timeout(medirGeo(), 2500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" }))
-else promisesArray.push(Promise.resolve({ state:"ZZ", city:"ZZ", city_full:"", state_full:"" }))
-
-const [velTag, batObj, movimento, redeTag, geo] = await Promise.all(promisesArray)
+const [velTag, batObj, movimento, redeTag, geo] = await Promise.all([
+  timeout(medirVelocidade(), 200,  "N6"),
+  timeout(medirBateria(),    200,  { bateria:"", carregando:"" }),
+  timeout(medirMovimento(),  200,  "M0"),
+  timeout(medirWebRTC(),     950,  "RU"),
+  timeout(medirGeo(),        2500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" }) // tempo maior para fallbacks
+])
 const ram = medirRAM()
 
-const stateTag = geo.state
-const cityTag  = geo.city
+// Estado e cidade via IP
+const stateTag = geo.state  // ex: SP, RJ, SC, ZZ
+const cityTag  = geo.city   // ex: SA, RI, BE, ZZ (2 chars)
 
 // =========================================================
-// DADOS TEMPORAIS E PARIDADE
+// TEMPORAIS
 // =========================================================
 let paridadeTag = null
 if(ENABLE_PARIDADE){
@@ -337,24 +340,8 @@ const bPar = isNaN(bNum) ? null : (bNum%2===0?"Par":"Impar")
 const nNum = parseInt((velTag.match(/\d+/)||[0])[0])
 const nPar = isNaN(nNum) ? null : (nNum%2===0?"Par":"Impar")
 
-// ========== LEITURA INTELIGENTE DO _fbp (com retry) ==========
-async function getFbpWithRetry(maxTentativas = 5, intervaloMs = 100) {
-  for (let i = 0; i < maxTentativas; i++) {
-    const fbp = getCookie("_fbp");
-    if (fbp && fbp !== "") return fbp;
-    await new Promise(r => setTimeout(r, intervaloMs));
-  }
-  return ""; // não encontrou, não forçamos geração artificial
-}
-const fbpValue = await getFbpWithRetry(5, 100);
-const FBP = (fbpValue !== "") ? 1 : 0;
-const fbcValue = getCookie("_fbc") || params.get("fbclid") || "";
-const FBC = (fbcValue !== "") ? 1 : 0;
-
-const HP_PADRAO = 20
-const hp = HP_PADRAO
-const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
-const tempoTag = "T1"
+const FBP = (getCookie("_fbp") !== "") ? 1 : 0
+const FBC = (getCookie("_fbc") !== "") ? 1 : 0
 
 let horaTag
 if(hp===1){
@@ -367,43 +354,66 @@ if(hp===1){
 const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
 
 // =========================================================
-// EVENTOS META (se ativado)
+// EVENTOS META — dispara sinais individuais
 // =========================================================
-if(CONFIG.enviarEventosMeta){
-  const eventosBasicos = [
-    tempoTag, velTag, batObj.bateria, batObj.carregando,
-    tema, ram, vib, device, conexao, movimento, redeTag,
-    placementTag, sourceTag,
-    stateTag, cityTag,
-    minDezena, minUnidade, segMetade, horaPar,
-    diaSemana, diaPar, periodo,
-    (bPar!==null?bPar:""), (nPar!==null?nPar:""),
-    "FBP"+FBP, "FBC"+FBC
-  ]
-  if(ENABLE_PARIDADE && paridadeTag) eventosBasicos.push(paridadeTag)
-  eventosBasicos.forEach(enviarEvento)
-  enviarEvento(horaTag)
-}
+const eventosBasicos = [
+  tempoTag, velTag, batObj.bateria, batObj.carregando,
+  tema, ram, vib, device, conexao, movimento, redeTag,
+  placementTag, sourceTag,
+  stateTag, cityTag,
+  minDezena, minUnidade, segMetade, horaPar,
+  diaSemana, diaPar, periodo,
+  (bPar!==null?bPar:""), (nPar!==null?nPar:""),
+  "FBP"+FBP, "FBC"+FBC
+]
+if(ENABLE_PARIDADE && paridadeTag) eventosBasicos.push(paridadeTag)
+eventosBasicos.forEach(enviarEvento)
+enviarEvento(horaTag)
 
 // =========================================================
-// RUNTIME MAP (usado apenas para regras TOP, atualmente vazio)
+// RUNTIME MAP — todas as variáveis para as regras TOP
 // =========================================================
 const RUNTIME = {
-  T: tempoTag, N: velTag, B: batObj.bateria || "B_absent",
-  C: batObj.carregando || "C_absent", Tema: tema, RAM: ram,
-  V: vib, Device: device, Conexao: conexao, Movimento: movimento,
-  Rede: redeTag, Placement: placementTag, Source: sourceTag,
-  Browser: browserTag, Hora: horaTag, State: stateTag, City: cityTag,
-  Min_Dezena: minDezena, Min_Unidade: minUnidade, Seg_Metade: segMetade,
-  Hora_Par: horaPar, DiaSemana: diaSemana, Dia_Par: diaPar, Periodo: periodo,
-  B_Par: bPar, N_Par: nPar, FBP: FBP, FBC: FBC
+  T          : tempoTag,
+  N          : velTag,
+  B          : batObj.bateria    || "B_absent",
+  C          : batObj.carregando || "C_absent",
+  Tema       : tema,
+  RAM        : ram,
+  V          : vib,
+  Device     : device,
+  Conexao    : conexao,
+  Movimento  : movimento,
+  Rede       : redeTag,
+  Placement  : placementTag,
+  Source     : sourceTag,
+  Browser    : browserTag,
+  Hora       : horaTag,
+  State      : stateTag,
+  City       : cityTag,
+  Min_Dezena : minDezena,
+  Min_Unidade: minUnidade,
+  Seg_Metade : segMetade,
+  Hora_Par   : horaPar,
+  DiaSemana  : diaSemana,
+  Dia_Par    : diaPar,
+  Periodo    : periodo,
+  B_Par      : bPar,
+  N_Par      : nPar,
+  FBP        : FBP,
+  FBC        : FBC
 }
 if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
 
-// Regras TOP (todas vazias, mas mantidas para compatibilidade)
+// =========================================================
+// REGRAS TOP
+// =========================================================
 const REGRAS_TOP02 = []
 const REGRAS_TOP03 = []
-const REGRAS_TOP04 = []
+const REGRAS_TOP04 = [
+
+
+]
 const REGRAS_TOP05 = []
 const REGRAS_TOP06 = []
 
@@ -416,27 +426,29 @@ const bateuTop04 = matchTop(REGRAS_TOP04)
 const bateuTop05 = matchTop(REGRAS_TOP05)
 const bateuTop06 = matchTop(REGRAS_TOP06)
 
-if(CONFIG.enviarEventosMeta){
-  if(bateuTop02) enviarEvento("TOP02")
-  if(bateuTop03) enviarEvento("TOP03")
-  if(bateuTop04) enviarEvento("TOP04")
-  if(bateuTop05) enviarEvento("TOP05")
-  if(bateuTop06) enviarEvento("TOP06")
-}
+if(bateuTop02) enviarEvento("TOP02")
+if(bateuTop03) enviarEvento("TOP03")
+if(bateuTop04) enviarEvento("TOP04")
+if(bateuTop05) enviarEvento("TOP05")
+if(bateuTop06) enviarEvento("TOP06")
 
 const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
 
 // =========================================================
 // MONTAGEM DO UC FINAL (sem tempoTag e vib)
 // =========================================================
-const idTag = "ID" + userId
+const idTag = "ID" + userId  // 10 chars fixos
+
+// ATENÇÃO: tempoTag e vib foram removidos do array abaixo
 const corpoParts = [
   baseUC,
+  // tempoTag,              // REMOVIDO
   velTag,
   batObj.bateria,
   batObj.carregando,
   tema,
   ram,
+  // vib,                   // REMOVIDO
   device,
   conexao,
   movimento,
@@ -446,6 +458,7 @@ const corpoParts = [
   stateTag,
   cityTag
 ]
+
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
 const MAX         = 50
 const espacoCorpo = MAX - idTag.length - topTag.length
@@ -455,7 +468,7 @@ const finalUC     = corpoFinal + topTag + idTag
 // =========================================================
 // DEBUG
 // =========================================================
-if(CONFIG.debug){
+if(DEBUG){
   alert(
     "=== DEBUG UC v3 ===\n" +
     "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
@@ -466,68 +479,181 @@ if(CONFIG.debug){
     "topTag:     [" + topTag        + "]\n" +
     "corpo len:  [" + corpo.length  + "]\n" +
     "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
-    "userId:     [" + userId        + "]\n" +
-    "_fbp:       [" + fbpValue      + "]"
+    "userId:     [" + userId        + "]"
   )
 }
 
 // =========================================================
-// ENVIO PARA GOOGLE SHEETS (se ativado)
+// GOOGLE SHEETS — fire-and-forget
 // =========================================================
-if(CONFIG.enviarGoogleSheets){
-  try {
-    const agora     = new Date()
-    const data_hora = agora.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})
-    const payload   = {
-      data_hora,
-      external_id : userId,
-      fbc         : fbcValue,
-      fbp         : fbpValue,
-      placement   : placementTag,
-      source      : sourceTag,
-      device,
-      conexao,
-      rede        : redeTag,
-      velocidade  : velTag,
-      state       : stateTag,
-      state_full  : geo.state_full,
-      city        : cityTag,
-      city_full   : geo.city_full,
-      uc_completo : finalUC,
-      min_dezena  : minDezena,
-      min_unidade : minUnidade,
-      seg_metade  : segMetade,
-      hora_par    : horaPar,
-      dia_semana  : diaSemana,
-      dia_par     : diaPar,
-      periodo,
-      b_par       : bPar,
-      n_par       : nPar,
-      fbp_flag    : FBP,
-      fbc_flag    : FBC
-    }
-    if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
+try {
+  const agora     = new Date()
+  const data_hora = agora.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})
+  const payload   = {
+    data_hora,
+    external_id : userId,
+    fbc         : getCookie("_fbc") || params.get("fbclid") || "",
+    fbp         : getCookie("_fbp") || "",
+    placement   : placementTag,
+    source      : sourceTag,
+    device,
+    conexao,
+    rede        : redeTag,
+    velocidade  : velTag,
+    state       : stateTag,
+    state_full  : geo.state_full,
+    city        : cityTag,
+    city_full   : geo.city_full,
+    uc_completo : finalUC,
+    min_dezena  : minDezena,
+    min_unidade : minUnidade,
+    seg_metade  : segMetade,
+    hora_par    : horaPar,
+    dia_semana  : diaSemana,
+    dia_par     : diaPar,
+    periodo,
+    b_par       : bPar,
+    n_par       : nPar,
+    fbp_flag    : FBP,
+    fbc_flag    : FBC
+  }
+  if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
+  fetch(SHEETS_URL, {
+    method  : "POST",
+    mode    : "no-cors",
+    headers : { "Content-Type": "application/json" },
+    body    : JSON.stringify(payload)
+  }).catch(()=>{})
+} catch(e){}
 
-    // Usa sendBeacon se disponível, senão fetch com keepalive
-    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(SHEETS_URL, blob)
-    } else {
-      fetch(SHEETS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        keepalive: true
-      }).catch(()=>{})
-    }
-  } catch(e){}
+// =========================================================
+// REDIRECT
+// =========================================================
+const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
+setTimeout(() => { window.location.href = url }, 400)
+
+})();
+</script>
+</body>
+</html>
+]
+const REGRAS_TOP05 = []
+const REGRAS_TOP06 = []
+
+const matchTop = (regras) => regras.some(regra =>
+  Object.entries(regra).every(([p,v]) => RUNTIME[p] === v)
+)
+const bateuTop02 = matchTop(REGRAS_TOP02)
+const bateuTop03 = matchTop(REGRAS_TOP03)
+const bateuTop04 = matchTop(REGRAS_TOP04)
+const bateuTop05 = matchTop(REGRAS_TOP05)
+const bateuTop06 = matchTop(REGRAS_TOP06)
+
+if(bateuTop02) enviarEvento("TOP02")
+if(bateuTop03) enviarEvento("TOP03")
+if(bateuTop04) enviarEvento("TOP04")
+if(bateuTop05) enviarEvento("TOP05")
+if(bateuTop06) enviarEvento("TOP06")
+
+const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
+
+// =========================================================
+// MONTAGEM DO UC FINAL (sem tempoTag e vib)
+// =========================================================
+const idTag = "ID" + userId  // 10 chars fixos
+
+// ATENÇÃO: tempoTag e vib foram removidos do array abaixo
+const corpoParts = [
+  baseUC,
+  // tempoTag,              // REMOVIDO
+  velTag,
+  batObj.bateria,
+  batObj.carregando,
+  tema,
+  ram,
+  // vib,                   // REMOVIDO
+  device,
+  conexao,
+  movimento,
+  redeTag,
+  placementTag,
+  sourceTag,
+  stateTag,
+  cityTag
+]
+
+const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
+const MAX         = 50
+const espacoCorpo = MAX - idTag.length - topTag.length
+const corpoFinal  = corpo.slice(0, espacoCorpo)
+const finalUC     = corpoFinal + topTag + idTag
+
+// =========================================================
+// DEBUG
+// =========================================================
+if(DEBUG){
+  alert(
+    "=== DEBUG UC v3 ===\n" +
+    "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
+    "cityTag:    [" + cityTag       + "] (" + geo.city_full  + ")\n" +
+    "placement:  [" + placementTag  + "]\n" +
+    "source:     [" + sourceTag     + "]\n" +
+    "horaTag:    [" + horaTag       + "]\n" +
+    "topTag:     [" + topTag        + "]\n" +
+    "corpo len:  [" + corpo.length  + "]\n" +
+    "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
+    "userId:     [" + userId        + "]"
+  )
 }
 
 // =========================================================
-// REDIRECT (tempo aumentado para 600ms)
+// GOOGLE SHEETS — fire-and-forget
+// =========================================================
+try {
+  const agora     = new Date()
+  const data_hora = agora.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})
+  const payload   = {
+    data_hora,
+    external_id : userId,
+    fbc         : getCookie("_fbc") || params.get("fbclid") || "",
+    fbp         : getCookie("_fbp") || "",
+    placement   : placementTag,
+    source      : sourceTag,
+    device,
+    conexao,
+    rede        : redeTag,
+    velocidade  : velTag,
+    state       : stateTag,
+    state_full  : geo.state_full,
+    city        : cityTag,
+    city_full   : geo.city_full,
+    uc_completo : finalUC,
+    min_dezena  : minDezena,
+    min_unidade : minUnidade,
+    seg_metade  : segMetade,
+    hora_par    : horaPar,
+    dia_semana  : diaSemana,
+    dia_par     : diaPar,
+    periodo,
+    b_par       : bPar,
+    n_par       : nPar,
+    fbp_flag    : FBP,
+    fbc_flag    : FBC
+  }
+  if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
+  fetch(SHEETS_URL, {
+    method  : "POST",
+    mode    : "no-cors",
+    headers : { "Content-Type": "application/json" },
+    body    : JSON.stringify(payload)
+  }).catch(()=>{})
+} catch(e){}
+
+// =========================================================
+// REDIRECT
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
-setTimeout(() => { window.location.href = url }, 600)
+setTimeout(() => { window.location.href = url }, 400)
 
 })();
 </script>
