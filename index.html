@@ -272,7 +272,7 @@ if(hp===1){
 }
 
 // =========================================================
-// EVENTOS META (sem velocidade, movimento, ram, webrtc)
+// EVENTOS META (sem N, M, Rede, RAM)
 // =========================================================
 if(CONFIG.enviarEventosMeta){
   const eventosBasicos = [
@@ -292,7 +292,7 @@ if(CONFIG.enviarEventosMeta){
 }
 
 // =========================================================
-// MONTAGEM DO UC FINAL (sem velTag, movimento, redeTag, ram)
+// MONTAGEM DO UC FINAL (SEM N, M, Rede, RAM)
 // =========================================================
 const idTag = "ID" + userId
 const corpoParts = [
@@ -331,7 +331,7 @@ if(CONFIG.debug){
 }
 
 // =========================================================
-// ENVIO PARA GOOGLE SHEETS (sem dados de velocidade, etc)
+// ENVIO PARA GOOGLE SHEETS (sem velocidade, movimento, etc)
 // =========================================================
 if(CONFIG.enviarGoogleSheets){
   try {
