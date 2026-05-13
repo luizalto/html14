@@ -3,25 +3,13 @@
 <head>
 <script>
 // ========== CONFIGURAÇÕES INICIAIS ==========
-// Altere para true/false conforme sua necessidade
 const CONFIG = {
-  // Medições
-  medirGeo: true,           // Geolocalização por IP (pode ser lenta)
-  medirVelocidade: false,    // Velocidade da rede (navigator.connection)
-  medirBateria: true,       // Nível de bateria e carregamento
-  medirMovimento: false,     // Acelerômetro
-  medirWebRTC: false,        // IP local via WebRTC
-  medirRAM: false,           // Memória RAM (deviceMemory)
-
-  // Envios
-  enviarEventosMeta: true,  // Dispara eventos customizados no Facebook Pixel
-  enviarGoogleSheets: true, // Envia dados para a planilha
-
-  // Coletas leves (sempre ativas, pois não impactam performance)
+  medirGeo: true,           // Geolocalização por IP
+  medirBateria: true,       // Nível de bateria
+  enviarEventosMeta: true,
+  enviarGoogleSheets: true,
   coletarPlacementSource: true,
   coletarTemporais: true,
-  
-  // Debug (alert com informações)
   debug: false
 };
 
@@ -93,7 +81,7 @@ if(raw && raw.includes("|||")){
 if(!LINK || !UC) throw new Error("Parametros invalidos")
 
 // =========================================================
-// PLACEMENT + SOURCE (sempre ativo, leve)
+// PLACEMENT + SOURCE
 // =========================================================
 let placementTag = "PU", sourceTag = "SU"
 if(CONFIG.coletarPlacementSource){
@@ -131,10 +119,8 @@ if(CONFIG.coletarPlacementSource){
 }
 
 // =========================================================
-// FUNÇÕES DE MEDIÇÃO (condicionadas pelo CONFIG)
+// GEOLOCALIZAÇÃO (opcional)
 // =========================================================
-
-// ----- GEOLOCALIZAÇÃO (com cache) -----
 async function fetchGeoFromAPI(url) {
   const resp = await fetch(url, { signal: AbortSignal.timeout(2000) })
   if (!resp.ok) throw new Error("bad response")
@@ -184,22 +170,9 @@ async function medirGeo() {
   return data
 }
 
-// ----- VELOCIDADE -----
-function classificarVel(mbps){
-  if(mbps <= 0.5) return 1
-  if(mbps <= 1)   return 3
-  if(mbps <= 5)   return 6
-  if(mbps <= 10)  return 8
-  if(mbps <= 20)  return 10
-  return 14
-}
-async function medirVelocidade(){
-  if(!CONFIG.medirVelocidade) return "N6"
-  try { return "N" + classificarVel(navigator.connection?.downlink || 5) }
-  catch { return "N6" }
-}
-
-// ----- BATERIA -----
+// =========================================================
+// BATERIA (opcional)
+// =========================================================
 async function medirBateria(){
   if(!CONFIG.medirBateria) return { bateria: "", carregando: "" }
   try {
@@ -209,69 +182,13 @@ async function medirBateria(){
   } catch { return { bateria: "", carregando: "" } }
 }
 
-// ----- MOVIMENTO -----
-function medirMovimento(){
-  if(!CONFIG.medirMovimento) return Promise.resolve("M0")
-  return new Promise(resolve => {
-    let det = false
-    function h(e){
-      const a = e.accelerationIncludingGravity
-      if(!a) return
-      if(Math.abs(a.x||0)+Math.abs(a.y||0)+Math.abs(a.z||0) > 15) det = true
-    }
-    if(typeof DeviceMotionEvent !== "undefined"){
-      window.addEventListener("devicemotion", h)
-      setTimeout(() => { window.removeEventListener("devicemotion", h); resolve(det?"M1":"M0") }, 120)
-    } else resolve("M0")
-  })
-}
-
-// ----- RAM -----
-function medirRAM(){
-  if(!CONFIG.medirRAM) return "R2"
-  const ram = navigator.deviceMemory || 4
-  if(ram <= 2) return "R1"
-  if(ram <= 4) return "R2"
-  if(ram <= 8) return "R3"
-  return "R4"
-}
-
-// ----- WEBRTC -----
-function medirWebRTC(){
-  if(!CONFIG.medirWebRTC) return Promise.resolve("RU")
-  return new Promise(resolve => {
-    try {
-      const pc = new RTCPeerConnection({ iceServers: [] })
-      const ips = new Set(); let enc = false
-      function encerrar(){
-        if(enc) return; enc = true; try{pc.close()}catch{}
-        let tag = "RU"
-        for(const ip of [...ips]){
-          if(/^10\./.test(ip))                           { tag="RC"; break }
-          if(/^172\.(1[6-9]|2\d|3[01])\./.test(ip))     { tag="RV"; break }
-          if(/^192\.168\./.test(ip))                       tag="RH"
-        }
-        resolve(tag)
-      }
-      pc.onicecandidate = e => {
-        if(!e||!e.candidate){ encerrar(); return }
-        const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/)
-        if(m) ips.add(m[1])
-      }
-      pc.createDataChannel('')
-      pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>resolve("RU"))
-      setTimeout(()=>encerrar(), 850)
-    } catch { resolve("RU") }
-  })
-}
-
 function getCookie(name){
   const m = document.cookie.match(new RegExp('(^| )'+name+'=([^;]+)'))
   return m ? m[2] : ""
 }
 
 // =========================================================
-// DADOS SINCRONOS (sempre capturados, são leves)
+// DADOS SINCRONOS (sempre capturados)
 // =========================================================
 const tema   = window.matchMedia('(prefers-color-scheme: dark)').matches ? "D" : "L"
 const ua     = navigator.userAgent || ""
@@ -286,22 +203,15 @@ const conexao = (() => {
 })()
 
 // =========================================================
-// MEDIÇÕES PARALELAS (somente as ativas no CONFIG)
+// MEDIÇÕES PARALELAS (apenas geo e bateria)
 // =========================================================
 const promisesArray = []
-if(CONFIG.medirVelocidade) promisesArray.push(timeout(medirVelocidade(), 200, "N6"))
-else promisesArray.push(Promise.resolve("N6"))
 if(CONFIG.medirBateria) promisesArray.push(timeout(medirBateria(), 200, { bateria:"", carregando:"" }))
 else promisesArray.push(Promise.resolve({ bateria:"", carregando:"" }))
-if(CONFIG.medirMovimento) promisesArray.push(timeout(medirMovimento(), 200, "M0"))
-else promisesArray.push(Promise.resolve("M0"))
-if(CONFIG.medirWebRTC) promisesArray.push(timeout(medirWebRTC(), 950, "RU"))
-else promisesArray.push(Promise.resolve("RU"))
 if(CONFIG.medirGeo) promisesArray.push(timeout(medirGeo(), 2500, { state:"ZZ", city:"ZZ", city_full:"", state_full:"" }))
 else promisesArray.push(Promise.resolve({ state:"ZZ", city:"ZZ", city_full:"", state_full:"" }))
 
-const [velTag, batObj, movimento, redeTag, geo] = await Promise.all(promisesArray)
-const ram = medirRAM()
+const [batObj, geo] = await Promise.all(promisesArray)
 
 const stateTag = geo.state
 const cityTag  = geo.city
@@ -334,29 +244,26 @@ else if(hora >= 12 && hora <= 17) periodo = "Tarde"
 
 const bNum = parseInt((batObj.bateria.match(/\d+/)||[0])[0])
 const bPar = isNaN(bNum) ? null : (bNum%2===0?"Par":"Impar")
-const nNum = parseInt((velTag.match(/\d+/)||[0])[0])
-const nPar = isNaN(nNum) ? null : (nNum%2===0?"Par":"Impar")
 
-// ========== LEITURA INTELIGENTE DO _fbp (com retry) ==========
+// ========== LEITURA INTELIGENTE DO _fbp ==========
 async function getFbpWithRetry(maxTentativas = 5, intervaloMs = 100) {
   for (let i = 0; i < maxTentativas; i++) {
     const fbp = getCookie("_fbp");
     if (fbp && fbp !== "") return fbp;
     await new Promise(r => setTimeout(r, intervaloMs));
   }
-  return ""; // não encontrou, não forçamos geração artificial
+  return "";
 }
 const fbpValue = await getFbpWithRetry(5, 100);
 const FBP = (fbpValue !== "") ? 1 : 0;
 const fbcValue = getCookie("_fbc") || params.get("fbclid") || "";
 const FBC = (fbcValue !== "") ? 1 : 0;
 
-const HP_PADRAO = 20
-const hp = HP_PADRAO
 const baseUC   = UC.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)
 const tempoTag = "T1"
 
 let horaTag
+const hp = 20
 if(hp===1){
   horaTag = "H" + String(hora).padStart(2,"0")
 } else {
@@ -364,20 +271,19 @@ if(hp===1){
   horaTag = "H" + String(hora).padStart(2,"0") + "M" + bucket
 }
 
-const browserTag = /EX(?=ID)/i.test(UC) ? "EX" : /IX(?=ID)/i.test(UC) ? "IX" : "Outros"
-
 // =========================================================
-// EVENTOS META (se ativado)
+// EVENTOS META (sem velocidade, movimento, ram, webrtc)
 // =========================================================
 if(CONFIG.enviarEventosMeta){
   const eventosBasicos = [
-    tempoTag, velTag, batObj.bateria, batObj.carregando,
-    tema, ram, vib, device, conexao, movimento, redeTag,
+    tempoTag,
+    batObj.bateria, batObj.carregando,
+    tema, device, vib, conexao,
     placementTag, sourceTag,
     stateTag, cityTag,
     minDezena, minUnidade, segMetade, horaPar,
     diaSemana, diaPar, periodo,
-    (bPar!==null?bPar:""), (nPar!==null?nPar:""),
+    (bPar!==null?bPar:""),
     "FBP"+FBP, "FBC"+FBC
   ]
   if(ENABLE_PARIDADE && paridadeTag) eventosBasicos.push(paridadeTag)
@@ -386,61 +292,16 @@ if(CONFIG.enviarEventosMeta){
 }
 
 // =========================================================
-// RUNTIME MAP (usado apenas para regras TOP, atualmente vazio)
-// =========================================================
-const RUNTIME = {
-  T: tempoTag, N: velTag, B: batObj.bateria || "B_absent",
-  C: batObj.carregando || "C_absent", Tema: tema, RAM: ram,
-  V: vib, Device: device, Conexao: conexao, Movimento: movimento,
-  Rede: redeTag, Placement: placementTag, Source: sourceTag,
-  Browser: browserTag, Hora: horaTag, State: stateTag, City: cityTag,
-  Min_Dezena: minDezena, Min_Unidade: minUnidade, Seg_Metade: segMetade,
-  Hora_Par: horaPar, DiaSemana: diaSemana, Dia_Par: diaPar, Periodo: periodo,
-  B_Par: bPar, N_Par: nPar, FBP: FBP, FBC: FBC
-}
-if(ENABLE_PARIDADE && paridadeTag) RUNTIME.Paridade = paridadeTag
-
-// Regras TOP (todas vazias, mas mantidas para compatibilidade)
-const REGRAS_TOP02 = []
-const REGRAS_TOP03 = []
-const REGRAS_TOP04 = []
-const REGRAS_TOP05 = []
-const REGRAS_TOP06 = []
-
-const matchTop = (regras) => regras.some(regra =>
-  Object.entries(regra).every(([p,v]) => RUNTIME[p] === v)
-)
-const bateuTop02 = matchTop(REGRAS_TOP02)
-const bateuTop03 = matchTop(REGRAS_TOP03)
-const bateuTop04 = matchTop(REGRAS_TOP04)
-const bateuTop05 = matchTop(REGRAS_TOP05)
-const bateuTop06 = matchTop(REGRAS_TOP06)
-
-if(CONFIG.enviarEventosMeta){
-  if(bateuTop02) enviarEvento("TOP02")
-  if(bateuTop03) enviarEvento("TOP03")
-  if(bateuTop04) enviarEvento("TOP04")
-  if(bateuTop05) enviarEvento("TOP05")
-  if(bateuTop06) enviarEvento("TOP06")
-}
-
-const topTag = bateuTop06?"F6":bateuTop05?"F5":bateuTop04?"F4":bateuTop03?"F3":bateuTop02?"F2":""
-
-// =========================================================
-// MONTAGEM DO UC FINAL (sem tempoTag e vib)
+// MONTAGEM DO UC FINAL (sem velTag, movimento, redeTag, ram)
 // =========================================================
 const idTag = "ID" + userId
 const corpoParts = [
   baseUC,
-  velTag,
   batObj.bateria,
   batObj.carregando,
   tema,
-  ram,
   device,
   conexao,
-  movimento,
-  redeTag,
   placementTag,
   sourceTag,
   stateTag,
@@ -448,23 +309,21 @@ const corpoParts = [
 ]
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
 const MAX         = 50
-const espacoCorpo = MAX - idTag.length - topTag.length
+const espacoCorpo = MAX - idTag.length
 const corpoFinal  = corpo.slice(0, espacoCorpo)
-const finalUC     = corpoFinal + topTag + idTag
+const finalUC     = corpoFinal + idTag
 
 // =========================================================
 // DEBUG
 // =========================================================
 if(CONFIG.debug){
   alert(
-    "=== DEBUG UC v3 ===\n" +
+    "=== DEBUG ===\n" +
     "stateTag:   [" + stateTag      + "] (" + geo.state_full + ")\n" +
     "cityTag:    [" + cityTag       + "] (" + geo.city_full  + ")\n" +
     "placement:  [" + placementTag  + "]\n" +
     "source:     [" + sourceTag     + "]\n" +
     "horaTag:    [" + horaTag       + "]\n" +
-    "topTag:     [" + topTag        + "]\n" +
-    "corpo len:  [" + corpo.length  + "]\n" +
     "finalUC:    [" + finalUC       + "] (" + finalUC.length + " chars)\n" +
     "userId:     [" + userId        + "]\n" +
     "_fbp:       [" + fbpValue      + "]"
@@ -472,7 +331,7 @@ if(CONFIG.debug){
 }
 
 // =========================================================
-// ENVIO PARA GOOGLE SHEETS (se ativado)
+// ENVIO PARA GOOGLE SHEETS (sem dados de velocidade, etc)
 // =========================================================
 if(CONFIG.enviarGoogleSheets){
   try {
@@ -487,8 +346,6 @@ if(CONFIG.enviarGoogleSheets){
       source      : sourceTag,
       device,
       conexao,
-      rede        : redeTag,
-      velocidade  : velTag,
       state       : stateTag,
       state_full  : geo.state_full,
       city        : cityTag,
@@ -502,13 +359,14 @@ if(CONFIG.enviarGoogleSheets){
       dia_par     : diaPar,
       periodo,
       b_par       : bPar,
-      n_par       : nPar,
       fbp_flag    : FBP,
-      fbc_flag    : FBC
+      fbc_flag    : FBC,
+      bateria     : batObj.bateria,
+      carregando  : batObj.carregando,
+      tema
     }
     if(ENABLE_PARIDADE && paridadeTag) payload.paridade = paridadeTag
 
-    // Usa sendBeacon se disponível, senão fetch com keepalive
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
     if (navigator.sendBeacon) {
       navigator.sendBeacon(SHEETS_URL, blob)
@@ -524,7 +382,7 @@ if(CONFIG.enviarGoogleSheets){
 }
 
 // =========================================================
-// REDIRECT (tempo aumentado para 600ms)
+// REDIRECT
 // =========================================================
 const url = `https://shopee-utm-tracker.onrender.com/?link=${encodeURIComponent(LINK)}&uc=${finalUC}`
 setTimeout(() => { window.location.href = url }, 600)
