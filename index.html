@@ -106,9 +106,10 @@ const placementTag = classPlacement(plRaw)
 const sourceTag    = classSrc(srcRaw)
 
 // =========================================================
-// GEOLOCALIZAÇÃO (com cache) — extrai IP também
-// FIX 1: extrairGeo agora pega ip de qualquer campo possível
-// FIX 2: cache só é reaproveitado se tiver ip
+// GEOLOCALIZAÇÃO (com cache)
+// FIX 1: extrairGeo lê campos corretos de cada API
+// FIX 2: cache só reaproveitado se tiver ip
+// FIX 3: loop só quebra se tiver ip
 // =========================================================
 async function fetchGeoFromAPI(url) {
   const resp = await fetch(url, { signal: AbortSignal.timeout(2000) })
@@ -116,16 +117,30 @@ async function fetchGeoFromAPI(url) {
   return resp.json()
 }
 function extrairGeo(d) {
-  const rc = (d.region_code || "").replace(/[^A-Za-z]/g, "").toUpperCase()
+  // region_code → ipapi.co, ipwho.is | regionCode → freeipapi
+  const rc = (d.region_code || d.regionCode || "")
+    .replace(/[^A-Za-z]/g, "").toUpperCase()
   const state = rc.length === 2 ? rc : "ZZ"
-  const cityRaw = (d.city || "")
+
+  // city → ipapi.co, ipwho.is | cityName → freeipapi
+  const cityRaw = (d.city || d.cityName || "")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z]/g, "")
-    .toUpperCase()
+    .replace(/[^a-zA-Z]/g, "").toUpperCase()
   const city = cityRaw.slice(0, 6) || "ZZ"
-  // pega ip de qualquer campo possível (ipapi.co=ip, ipwho.is=ip, freeipapi=ipAddress)
+
+  // ip → ipapi.co, ipwho.is | ipAddress → freeipapi | query → ip-api.com
   const ip = d.ip || d.ipAddress || d.query || ""
-  return { state, city, city_full: d.city || "", state_full: d.region || "", ip }
+
+  // region → ipapi.co, ipwho.is | regionName → freeipapi
+  const region = d.region || d.regionName || ""
+
+  return {
+    state,
+    city,
+    city_full  : d.city || d.cityName || "",
+    state_full : region,
+    ip
+  }
 }
 const GEO_CACHE_KEY = "geo_cache"
 const GEO_CACHE_TTL = 30 * 60 * 1000
@@ -145,7 +160,8 @@ async function medirGeo() {
     try {
       const json = await apiFn()
       data = extrairGeo(json)
-      if (data.state !== "ZZ" || data.city !== "ZZ") break
+      // FIX 3: só quebra se tiver ip
+      if (data.ip && (data.state !== "ZZ" || data.city !== "ZZ")) break
     } catch {}
   }
   if (!data) {
