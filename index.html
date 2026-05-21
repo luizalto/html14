@@ -15,12 +15,12 @@ s.parentNode.insertBefore(t,s)
 function gerarId(){
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
-  for(let i = 0; i < 8; i++) id += chars.charAt(Math.floor(Math.random() * chars.length))
+  for(let i = 0; i < 13; i++) id += chars.charAt(Math.floor(Math.random() * chars.length))
   return id
 }
 function getUserId(){
   let id = localStorage.getItem('user_id')
-  if(!id || id.length !== 8){ id = gerarId(); localStorage.setItem('user_id', id) }
+  if(!id || id.length !== 13){ id = gerarId(); localStorage.setItem('user_id', id) }
   return id
 }
 const userId = getUserId()
@@ -413,7 +413,7 @@ const idTag = "ID" + userId
 const corpoParts = [
   baseUC, tempoTag, velTag, batObj.bateria, batObj.carregando,
   tema, ram, vib, device, conexao, movimento, redeTag,
-  placementTag, sourceTag, stateTag, cityTag
+  placementTag, sourceTag
 ]
 
 const corpo       = corpoParts.join("").replace(/[^a-zA-Z0-9]/g, "")
