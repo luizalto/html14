@@ -2,96 +2,93 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Ache seu produto — Shopee</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }
+  html, body { width: 100%; overflow-x: hidden; }
   body {
-    min-height: 100vh;
-    background: linear-gradient(160deg, #fff3ee 0%, #ffe4d6 50%, #ffd7c2 100%);
-    display: flex; flex-direction: column; align-items: center;
-    padding: 40px 20px;
+    min-height: 100vh; min-height: 100dvh;
+    background: linear-gradient(160deg, #fff3ee 0%, #ffe4d6 60%, #ffd7c2 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px 16px;
   }
   .logo {
-    font-size: 30px; font-weight: 800; color: #ee4d2d;
-    margin-bottom: 6px; letter-spacing: -0.5px;
+    font-size: 26px; font-weight: 800; color: #ee4d2d;
+    margin-bottom: 4px; text-align: center;
   }
   .sub {
-    color: #6b4a3a; font-size: 15px; text-align: center;
-    max-width: 340px; line-height: 1.5; margin-bottom: 30px;
+    color: #6b4a3a; font-size: 14px; text-align: center;
+    margin-bottom: 24px;
   }
-  .sub b { color: #ee4d2d; }
-  .search-box {
-    width: 100%; max-width: 420px;
-    background: #fff; border-radius: 16px;
+  .card, .search-box {
+    width: 100%; max-width: 380px;
+    background: #fff; border-radius: 18px;
     box-shadow: 0 8px 30px rgba(238, 77, 45, .15);
-    padding: 24px 20px;
+    padding: 22px 18px;
   }
-  label { font-size: 13px; font-weight: 700; color: #8a5a44; text-transform: uppercase; letter-spacing: .5px; }
-  .field {
-    display: flex; gap: 8px; margin-top: 10px;
+  label {
+    display: block; text-align: center;
+    font-size: 13px; font-weight: 700; color: #8a5a44;
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 12px;
   }
   input {
-    flex: 1; font-size: 20px; padding: 14px 16px;
+    display: block; width: 100%;
+    font-size: 22px; padding: 14px;
     border: 2px solid #f0c9b8; border-radius: 12px;
     outline: none; text-align: center; color: #333;
-    -webkit-appearance: none;
+    -webkit-appearance: none; appearance: none;
   }
   input:focus { border-color: #ee4d2d; }
   input::placeholder { color: #c9a08d; font-size: 16px; }
   .btn-search {
+    display: block; width: 100%; margin-top: 12px;
     background: #ee4d2d; color: #fff; border: none;
-    font-size: 17px; font-weight: 700; padding: 0 22px;
-    border-radius: 12px; cursor: pointer;
+    font-size: 18px; font-weight: 700;
+    padding: 15px; border-radius: 12px; cursor: pointer;
   }
-  .btn-search:active { transform: scale(.96); }
-  .hint { margin-top: 10px; font-size: 12.5px; color: #a98; text-align: center; }
-  .chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .btn-search:active { transform: scale(.97); }
+  .hint { margin-top: 12px; font-size: 12.5px; color: #a98; text-align: center; }
+  .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chip {
     background: #fff0ea; color: #ee4d2d; border: 1px solid #f5c4b2;
     padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer;
   }
-  .result { width: 100%; max-width: 420px; margin-top: 22px; display: none; }
-  .card {
-    background: #fff; border-radius: 16px; padding: 26px 20px;
-    box-shadow: 0 8px 30px rgba(238, 77, 45, .15);
-    text-align: center;
-    animation: pop .25s ease;
-  }
+  .result { width: 100%; max-width: 380px; margin-top: 16px; display: none; }
+  .rcard { text-align: center; animation: pop .25s ease; }
   @keyframes pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  .card .num { font-size: 13px; color: #a98; font-weight: 600; letter-spacing: .5px; }
-  .card .nome { font-size: 19px; font-weight: 700; color: #333; margin: 8px 0 20px; line-height: 1.35; }
+  .rcard .num { font-size: 13px; color: #a98; font-weight: 600; letter-spacing: .5px; }
+  .rcard .nome { font-size: 19px; font-weight: 700; color: #333; margin: 8px 0 18px; line-height: 1.35; }
   .btn-shopee {
     display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
     background: linear-gradient(90deg, #ee4d2d, #ff7337);
     color: #fff; text-decoration: none;
     font-size: 18px; font-weight: 800;
-    padding: 17px 20px; border-radius: 14px;
+    padding: 16px; border-radius: 14px;
     box-shadow: 0 6px 18px rgba(238, 77, 45, .35);
   }
   .btn-shopee:active { transform: scale(.97); }
-  .btn-shopee svg { width: 24px; height: 24px; fill: #fff; }
+  .btn-shopee svg { width: 24px; height: 24px; fill: #fff; flex: none; }
   .erro {
     background: #fff5f3; border: 1px solid #f5c4b2; color: #c0392b;
     border-radius: 12px; padding: 16px; text-align: center;
     font-size: 14.5px; line-height: 1.5;
     animation: pop .25s ease;
   }
-  footer { margin-top: 40px; font-size: 12px; color: #b08d7a; text-align: center; }
+  footer { margin-top: 28px; font-size: 12px; color: #b08d7a; text-align: center; }
 </style>
 </head>
 <body>
 
 <div class="logo">🛍️ Achadinhos Shopee</div>
-<p class="sub">Ache o produto em 2 passos:<br><b>1.</b> Pegue o número no vídeo &nbsp;·&nbsp; <b>2.</b> Digite aqui embaixo 👇</p>
+<p class="sub">Pegue o número no vídeo e digite aqui 👇</p>
 
 <div class="search-box">
   <label for="q">Digite o número do produto</label>
-  <div class="field">
-    <input id="q" type="text" inputmode="numeric" placeholder="Ex: 4000" autocomplete="off">
-    <button class="btn-search" onclick="buscar()">Buscar</button>
-  </div>
-  <div class="hint">O número aparece no vídeo assim: <b>N° 4000</b></div>
+  <input id="q" type="text" inputmode="numeric" placeholder="Ex: 4000" autocomplete="off">
+  <button class="btn-search" onclick="buscar()">Buscar</button>
   <div class="chips" id="chips"></div>
 </div>
 
@@ -126,16 +123,16 @@ function carregar() {
       montarChips();
     })
     .catch(() => {
-      document.getElementById('result').style.display = 'block';
-      document.getElementById('result').innerHTML =
-        '<div class="erro">Não consegui carregar a lista de produtos. Tente recarregar a página.</div>';
+      const box = document.getElementById('result');
+      box.style.display = 'block';
+      box.innerHTML = '<div class="erro">Não consegui carregar a lista de produtos. Tente recarregar a página.</div>';
     });
 }
 
 function montarChips() {
   const el = document.getElementById('chips');
   el.innerHTML = '';
-  produtos.slice(0, 6).forEach(p => {
+  produtos.slice(0, 3).forEach(p => {
     const b = document.createElement('span');
     b.className = 'chip';
     b.textContent = 'N° ' + p.digitos;
@@ -152,7 +149,7 @@ function buscar() {
     box.innerHTML = '<div class="erro">Digite o número do produto que aparece no vídeo 🙂</div>';
     return;
   }
-  const qn = String(parseInt(q, 10)); // remove zeros à esquerda
+  const qn = String(parseInt(q, 10));
   const achou = produtos.find(p =>
     p.digitos === q || String(parseInt(p.digitos, 10)) === qn
   );
@@ -162,7 +159,7 @@ function buscar() {
   }
   const nome = achou.nome || ('Produto N° ' + achou.digitos);
   box.innerHTML =
-    '<div class="card">' +
+    '<div class="card rcard">' +
       '<div class="num">N° ' + achou.digitos + '</div>' +
       '<div class="nome">' + nome + '</div>' +
       '<a class="btn-shopee" href="' + achou.link + '" target="_blank" rel="noopener">' +
