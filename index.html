@@ -108,6 +108,7 @@ function carregar() {
       const linhas = txt.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
       const cab = linhas[0].split(',');
       const iT = cab.indexOf('T');
+      const iLinkBio = cab.indexOf('Link Bio');
       const iLinkConv = cab.indexOf('Link Convertido');
       const iLinkOrig = cab.indexOf('Link Original');
       const iProd = cab.indexOf('Produto');
@@ -116,7 +117,7 @@ function carregar() {
         return {
           codigo: (c[iT] || '').trim(),
           digitos: apenasDigitos(c[iT] || ''),
-          link: (c[iLinkConv] || c[iLinkOrig] || '').trim(),
+          link: (c[iLinkBio] || c[iLinkConv] || c[iLinkOrig] || '').trim(),
           nome: (c[iProd] || '').trim()
         };
       }).filter(p => p.codigo && p.link);
