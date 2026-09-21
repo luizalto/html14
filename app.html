@@ -3,59 +3,142 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Post Auto — Automação de publicações Shopee</title>
+<title>Shopee Reels Automação</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Arial,sans-serif; }
-  body { background:#0f0f14; color:#eee; min-height:100vh; }
-  .wrap { max-width:760px; margin:0 auto; padding:48px 20px 64px; }
-  .logo { font-size:28px; font-weight:800; color:#ff6600; }
-  .logo span { color:#fff; }
-  h1 { font-size:30px; margin:26px 0 12px; line-height:1.25; }
-  p.sub { color:#b8b8c4; font-size:17px; line-height:1.6; }
-  .card { background:#191922; border:1px solid #2a2a36; border-radius:14px; padding:22px 24px; margin-top:22px; }
-  .card h2 { font-size:18px; color:#ff6600; margin-bottom:10px; }
-  .card p, .card li { color:#cfcfda; font-size:15px; line-height:1.65; }
-  .card ul { padding-left:20px; }
-  .badge { display:inline-block; background:#232330; border:1px solid #34344a; border-radius:999px; padding:6px 14px; font-size:13px; color:#9ad; margin:4px 6px 0 0; }
-  a.btn { display:inline-block; margin-top:28px; background:#ff6600; color:#fff; text-decoration:none; font-weight:700; padding:14px 28px; border-radius:10px; }
-  a.priv { color:#8ab4ff; font-size:14px; display:inline-block; margin-top:18px; }
-  footer { margin-top:44px; color:#666; font-size:13px; }
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:#0f1117; color:#e4e6eb; min-height:100vh; }
+  .header { display:flex; justify-content:space-between; align-items:center;
+    padding:18px 28px; background:#161a23; border-bottom:1px solid #262b38; }
+  .header h1 { font-size:20px; font-weight:700; }
+  .header h1 span { color:#ff6b35; }
+  .engine { display:flex; align-items:center; gap:10px; }
+  .engine-label { font-size:13px; color:#9aa1b0; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#2ecc71; box-shadow:0 0 8px #2ecc71; }
+  .switch { position:relative; width:52px; height:28px; display:inline-block; cursor:pointer; }
+  .slider { position:absolute; inset:0; background:#2ecc71; border-radius:32px; }
+  .slider::before { content:""; position:absolute; width:22px; height:22px; border-radius:50%;
+    background:#fff; top:3px; left:27px; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px 20px 60px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:20px; }
+  .card { background:#161a23; border:1px solid #262b38; border-radius:12px; padding:18px; }
+  .card .num { font-size:30px; font-weight:700; color:#ff6b35; }
+  .card .lbl { font-size:12px; color:#9aa1b0; margin-top:4px; text-transform:uppercase; letter-spacing:.5px; }
+  .section { background:#161a23; border:1px solid #262b38; border-radius:12px; padding:20px; margin-bottom:20px; }
+  .section h2 { font-size:15px; margin-bottom:14px; color:#c9cedb; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:#9aa1b0; font-weight:600; padding:8px 10px; border-bottom:1px solid #262b38;
+    font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
+  td { padding:9px 10px; border-bottom:1px solid #1d2230; }
+  tr:hover td { background:#1a1f2b; }
+  .tag { padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+  .tag.published { background:#123a25; color:#2ecc71; }
+  .tag.pending { background:#3a3423; color:#f1c40f; }
+  .btn { background:#ff6b35; color:#fff; border:none; padding:9px 18px; border-radius:8px;
+    font-size:13px; font-weight:600; cursor:pointer; }
+  .btn.ghost { background:#262b38; }
+  .btn.danger { background:#c0392b; padding:6px 12px; font-size:12px; }
+  input, select { background:#0f1117; border:1px solid #2c3242; color:#e4e6eb; padding:9px 12px;
+    border-radius:8px; font-size:14px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .logbox { background:#0a0c10; border:1px solid #262b38; border-radius:8px; padding:12px;
+    font-family:Consolas,monospace; font-size:12.5px; color:#8f97a8; max-height:180px; overflow:hidden; line-height:1.7; }
+  .logbox .ok { color:#2ecc71; } .logbox .warn { color:#f1c40f; }
+  footer { text-align:center; color:#5a6070; font-size:13px; padding:24px 0 10px; }
+  footer a { color:#8ab4ff; text-decoration:none; }
+  #toast { position:fixed; left:50%; bottom:34px; transform:translateX(-50%) translateY(90px);
+    background:#c0392b; color:#fff; padding:13px 26px; border-radius:10px; font-weight:600;
+    font-size:15px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .25s; z-index:99; }
+  #toast.show { transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="logo">Post<span>Auto</span></div>
-  <h1>Automação de publicações de produtos Shopee</h1>
-  <p class="sub">Aplicativo interno que agenda e publica automaticamente vídeos de produtos nas minhas próprias contas — Pinterest, Instagram, Facebook e YouTube — sempre com o link de afiliado correspondente.</p>
-
-  <div class="card">
-    <h2>📌 Como funciona no Pinterest</h2>
-    <ul>
-      <li>Autentico minha conta Pinterest Business via OAuth oficial do Pinterest</li>
-      <li>Escolho a pasta (board) de destino dentro do painel do app</li>
-      <li>O app envia o vídeo pela API v5 e cria o Pin com título, descrição e link de afiliado Shopee</li>
-      <li>Os Pins são publicados somente nas minhas próprias pastas, nos horários que eu agendo</li>
-    </ul>
+<div class="header">
+  <h1>🧡 Shopee <span>Reels Automação</span></h1>
+  <div class="engine">
+    <span class="engine-label">Motor LIGADO</span>
+    <span class="dot"></span>
+    <span class="switch"><span class="slider"></span></span>
   </div>
-
-  <div class="card">
-    <h2>🗓️ Agendamento</h2>
-    <p>Defino grupos de vídeos e horários (ex.: 06:40, 11:00, 19:00). O motor publica automaticamente todos os dias, escolhendo um horário aleatório dentro de cada faixa agendada.</p>
-  </div>
-
-  <div class="card">
-    <h2>🔗 Plataformas integradas</h2>
-    <span class="badge">Pinterest</span>
-    <span class="badge">Instagram Reels</span>
-    <span class="badge">Facebook</span>
-    <span class="badge">YouTube Shorts</span>
-  </div>
-
-  <a class="btn" href="index.html">🔍 Buscar produto por número</a>
-  <br>
-  <a class="priv" href="privacidade.html">Política de Privacidade</a>
-
-  <footer>Post Auto · Rasant · Uso interno · Contato: luizalto@gmail.com</footer>
 </div>
+
+<div class="wrap">
+  <div class="cards">
+    <div class="card"><div class="num">95</div><div class="lbl">Vídeos postados</div></div>
+    <div class="card"><div class="num">1</div><div class="lbl">Links enviados (DM)</div></div>
+    <div class="card"><div class="num">8</div><div class="lbl">Contas conectadas</div></div>
+    <div class="card"><div class="num">18</div><div class="lbl">Na fila</div></div>
+    <div class="card"><div class="num">1</div><div class="lbl">Erros de publicação</div></div>
+  </div>
+
+  <div class="section">
+    <h2>📸 Contas Instagram&nbsp;&nbsp;<button class="btn">+ Conectar conta</button>&nbsp;<button class="btn ghost">🔑 Conectar com token</button></h2>
+    <table>
+      <tr><th>#</th><th>Instagram</th><th>Página Facebook</th><th>Seguidores</th><th>Token válido até</th><th></th></tr>
+      <tr><td>1</td><td>@supers_skifly</td><td>RasantFull</td><td>13</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>2</td><td>@uplaro.uk</td><td>Rasant Full</td><td style="color:#2ecc71">5.666</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>3</td><td>@shopeepro.analise</td><td>Vida na Prática</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>4</td><td>@radardescoberto</td><td>Radar Descoberto</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>5</td><td>@descobertanahora</td><td>Descoberta Na Hora</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>6</td><td>@descobertapura</td><td>Descoberta Pura</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>7</td><td>@rasantaparador</td><td>Rasant aparador</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+      <tr><td>8</td><td>@lupaativa</td><td>Lupa Ativa</td><td>—</td><td>-</td><td><button class="btn danger">remover</button></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>🗓️ Programação de publicações</h2>
+    <div class="row" style="margin-bottom:14px">
+      <select><option>Grupo_03</option><option>Grupo_04</option><option>Grupo_12</option></select>
+      <input type="time" value="06:40">
+      <button class="btn">+ Adicionar horário</button>
+    </div>
+    <table>
+      <tr><th>Grupo</th><th>Horários</th><th>Contas</th><th></th></tr>
+      <tr><td>Grupo_03</td><td>06:40 · 11:00 · 19:00</td><td>Rasant aparador</td><td><button class="btn danger">X</button></td></tr>
+      <tr><td>Grupo_04</td><td>06:40 · 11:00 · 19:00</td><td>Descoberta Pura</td><td><button class="btn danger">X</button></td></tr>
+      <tr><td>Grupo_12</td><td>06:40 · 11:00 · 19:00</td><td>Lupa Ativa</td><td><button class="btn danger">X</button></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>⏭️ Próximas publicações / Fila</h2>
+    <table>
+      <tr><th>Vídeo</th><th>Conta</th><th>Horário</th><th>Status</th></tr>
+      <tr><td>N200T652</td><td>@lupaativa</td><td>19:00</td><td><span class="tag pending">agendado</span></td></tr>
+      <tr><td>N200T151</td><td>@descobertapura</td><td>19:00</td><td><span class="tag pending">agendado</span></td></tr>
+      <tr><td>N200T101</td><td>@rasantaparador</td><td>19:00</td><td><span class="tag pending">agendado</span></td></tr>
+      <tr><td>N200T650</td><td>@lupaativa</td><td>11:00</td><td><span class="tag published">publicado</span></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>📜 Log</h2>
+    <div class="logbox">
+      <div><span class="ok">[15:02:11]</span> [publisher] Reel N200T650 publicado em @lupaativa</div>
+      <div><span class="ok">[15:02:10]</span> [publisher] Video editado: numero N° 652 inserido no canto</div>
+      <div><span class="ok">[14:08:33]</span> [ads_comments] DM enviada para @clods_junior — anuncio N200U3076</div>
+      <div><span class="warn">[11:00:02]</span> [scheduler] Gerando horarios aleatorios do proximo ciclo</div>
+      <div><span class="ok">[06:40:12]</span> [publisher] Reel N200T100 publicado em @rasantaparador</div>
+    </div>
+  </div>
+
+  <footer>
+    Post Auto · Rasant · <a href="privacidade.html">Política de Privacidade</a>
+  </footer>
+</div>
+
+<div id="toast">🔒 Não autorizado</div>
+<script>
+  const toast = document.getElementById('toast');
+  let t;
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('a[href="privacidade.html"]')) return;
+    e.preventDefault();
+    toast.classList.add('show');
+    clearTimeout(t);
+    t = setTimeout(() => toast.classList.remove('show'), 1800);
+  }, true);
+  document.addEventListener('submit', e => e.preventDefault(), true);
+</script>
 </body>
 </html>
